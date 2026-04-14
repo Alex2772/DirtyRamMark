@@ -96,12 +96,12 @@ AFuture<> measure(std::vector<glm::dvec4>& buffer, size_t threadCount, std::func
         const auto PROGRESS_INTERVAL = CHUNK_SIZE / 4;
         
         {
-            std::vector<std::jthread> threads;
+            std::vector<std::thread> threads;
 
             for (size_t i = 0; i < threadCount; ++i) {
                 size_t offset = i * CHUNK_SIZE;
                 
-                threads.emplace_back([&buffer, offset, progress, processedBytes, start, CHUNK_SIZE, onProgress, PROGRESS_INTERVAL, bufferSize = buffer.size(), &crc]() mutable {
+                threads.emplace_back([=, &buffer, bufferSize = buffer.size(), &crc]() mutable {
                     glm::dvec4 localCrc{};
                     for (size_t index = 0; index < CHUNK_SIZE; ++index) {
 
@@ -116,8 +116,8 @@ AFuture<> measure(std::vector<glm::dvec4>& buffer, size_t threadCount, std::func
                             const auto now = std::chrono::high_resolution_clock::now();
                             AThread::main()->enqueue([=] {
                                 *progress = *progress + static_cast<float>(PROGRESS_INTERVAL) / bufferSize;
-                                *processedBytes += PROGRESS_INTERVAL;
-                                const auto elapsed = now - start;
+                                *processedBytes += PROGRESS_INTERVAL * threadCount;
+                                const std::chrono::duration<double> elapsed = now - start;
                                 double currentSpeed = static_cast<double>(*processedBytes) / elapsed.count();
                                 onProgress(*progress, currentSpeed);
                             });
@@ -125,6 +125,9 @@ AFuture<> measure(std::vector<glm::dvec4>& buffer, size_t threadCount, std::func
                     }
                     crc += localCrc;
                 });
+            }
+            for (auto& i : threads) {
+                i.join();
             }
         }
 
@@ -305,6 +308,11 @@ AUI_ENTRY {
     auto state = _new<State>();
     window->setContents(
       Vertical {
+#if AUI_DEBUG
+        Centered {Label { "Debug build - results might be inaccurate" } AUI_OVERRIDE_STYLE {
+            TextColor(AColor::RED),
+        } },
+#endif
         _form({
             {
                 myProgressBarWithButton( AUI_REACT(state->tests[static_cast<size_t>(TestType::ALL)].progress), Label { "All" }, [=] {
@@ -343,6 +351,7 @@ AUI_ENTRY {
                 LayoutSpacing(4_dp),
             } AUI_LET {
                 AObject::connect(AUI_REACT(state->isTestRunning), AUI_SLOT(it)::setVisible);
+                AObject::connect(state->isTestRunning.changed, AUI_SLOT(window)::redraw);
             },
         } AUI_OVERRIDE_STYLE {
             LayoutSpacing(4_dp),

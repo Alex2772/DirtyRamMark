@@ -33,6 +33,9 @@ aui_link(${PROJECT_NAME} PRIVATE aui::core aui::views)
 # Compile assets
 aui_compile_assets(${PROJECT_NAME})
 
+# Enable tests
+aui_enable_tests(${PROJECT_NAME})
+
 # Setup icon, display name, etc
 aui_app(TARGET ${PROJECT_NAME}
         NAME "DirtyRamMark"
