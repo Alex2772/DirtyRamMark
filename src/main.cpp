@@ -178,103 +178,78 @@ static _<AView> myProgressBarWithLabel(contract::In<aui::float_within_0_1> progr
     };
 }
 
-// Helper function to run a specific test type
-template<TestType T>
-static void runTestType(_<State> state) {
-    auto& testState = state->tests[static_cast<size_t>(T)];
-    testState.progress = 0.f;
-    state->isTestRunning = true;
-    testState.readBandwidth = 0;
-    testState.writeBandwidth = 0;
-    
-    state->async << AUI_THREADPOOL {
+static AFuture<> allocateBuffer(_<State> state) {
+    return AUI_THREADPOOL {
         // Allocate buffer
         size_t bufferSizeBytes = static_cast<size_t>(state->bufferSizeGB) * 1024ULL * 1024ULL * 1024ULL;
         state->buffer.resize(bufferSizeBytes / sizeof(glm::dvec4));
-        
-
-        state->async << measure<T, OperationType::READ>(state->buffer, state->threads, [=, testType = T](aui::float_within_0_1 p, double speed) {
-            // Read phase: 0-50% progress
-            state->tests[static_cast<size_t>(testType)].progress = p * 0.5f;
-            state->tests[static_cast<size_t>(testType)].readBandwidth = speed;
-        }).onFinally([=, testType = T] {
-            AThread::main()->enqueue([=] {
-                // Reset to 50% at the start of write phase
-                state->tests[static_cast<size_t>(testType)].progress = 0.5f;
-            });
-            state->async << measure<T, OperationType::WRITE>(state->buffer, state->threads, [=, testType = T](aui::float_within_0_1 p, double speed) {
-                // Write phase: 50-100% progress
-                state->tests[static_cast<size_t>(testType)].progress = 0.5f + p * 0.5f;
-                state->tests[static_cast<size_t>(testType)].writeBandwidth = speed;
-            }).onFinally([=, testType = T] {
-                AThread::main()->enqueue([=] {
-                    state->isTestRunning = false;
-                    state->tests[static_cast<size_t>(testType)].progress = 1.0f;
-                });
-            });
-        });
     };
 }
 
-// Run all tests sequentially
-static void runAllTests(_<State> state) {
+// Helper function to run a specific test type
+template<TestType T>
+static AFuture<> runTestType(_<State> state) {
     state->isTestRunning = true;
+    AUI_DEFER { state->isTestRunning = false; };
+    auto& testState = state->tests[static_cast<size_t>(T)];
+    testState = {};
+    
+    co_await allocateBuffer(state);
+    co_await measure<T, OperationType::READ>(state->buffer, state->threads, [=, testType = T](aui::float_within_0_1 p, double speed) {
+        // Read phase: 0-50% progress
+        state->tests[static_cast<size_t>(testType)].progress = p * 0.5f;
+        state->tests[static_cast<size_t>(testType)].readBandwidth = speed;
+    });
+    co_await measure<T, OperationType::WRITE>(state->buffer, state->threads, [=, testType = T](aui::float_within_0_1 p, double speed) {
+        // Write phase: 50-100% progress
+        state->tests[static_cast<size_t>(testType)].progress = 0.5f + p * 0.5f;
+        state->tests[static_cast<size_t>(testType)].writeBandwidth = speed;
+    });
+}
+
+// Run all tests sequentially
+static AFuture<> runAllTests(_<State> state) {
+    state->isTestRunning = true;
+    AUI_DEFER {
+        state->isTestRunning = false;
+    };
     
     // Reset all progress
     state->tests.fill({});
     
-    state->async << AUI_THREADPOOL {
-        // Allocate buffer
-        size_t bufferSizeBytes = static_cast<size_t>(state->bufferSizeGB) * 1024ULL * 1024ULL * 1024ULL;
-        state->buffer.resize(bufferSizeBytes / sizeof(glm::dvec4));
-        
-        // Run SEQ test first
-        state->async << measure<TestType::SEQ, OperationType::READ>(state->buffer, state->threads, [=](aui::float_within_0_1 p, double speed) {
-            // SEQ read progress: 0-50% of SEQ test, 0-25% of overall
-            state->tests[static_cast<size_t>(TestType::SEQ)].progress = p * 0.5f;
-            state->tests[static_cast<size_t>(TestType::SEQ)].readBandwidth = speed;
-            // Overall progress: 0-25%
-            state->tests[static_cast<size_t>(TestType::ALL)].progress = p * 0.25f;
-        }).onFinally([=] {
-            AThread::main()->enqueue([=] {
-                state->tests[static_cast<size_t>(TestType::SEQ)].progress = 0.5f;
-            });
-            state->async << measure<TestType::SEQ, OperationType::WRITE>(state->buffer, state->threads, [=](aui::float_within_0_1 p, double speed) {
-                // SEQ write progress: 50-100% of SEQ test, 25-50% of overall
-                state->tests[static_cast<size_t>(TestType::SEQ)].progress = 0.5f + p * 0.5f;
-                state->tests[static_cast<size_t>(TestType::SEQ)].writeBandwidth = speed;
-                // Overall progress: 25-50%
-                state->tests[static_cast<size_t>(TestType::ALL)].progress = 0.25f + p * 0.25f;
-            }).onFinally([=] {
-                // Now run RND test
-                state->async << measure<TestType::RND, OperationType::READ>(state->buffer, state->threads, [=](aui::float_within_0_1 p, double speed) {
-                    // RND read progress: 0-50% of RND test, 50-75% of overall
-                    state->tests[static_cast<size_t>(TestType::RND)].progress = p * 0.5f;
-                    state->tests[static_cast<size_t>(TestType::RND)].readBandwidth = speed;
-                    // Overall progress: 50-75%
-                    state->tests[static_cast<size_t>(TestType::ALL)].progress = 0.5f + p * 0.25f;
-                }).onFinally([=] {
-                    AThread::main()->enqueue([=] {
-                        state->tests[static_cast<size_t>(TestType::RND)].progress = 0.5f;
-                    });
-                    state->async << measure<TestType::RND, OperationType::WRITE>(state->buffer, state->threads, [=](aui::float_within_0_1 p, double speed) {
-                        // RND write progress: 50-100% of RND test, 75-100% of overall
-                        state->tests[static_cast<size_t>(TestType::RND)].progress = 0.5f + p * 0.5f;
-                        state->tests[static_cast<size_t>(TestType::RND)].writeBandwidth = speed;
-                        // Overall progress: 75-100%
-                        state->tests[static_cast<size_t>(TestType::ALL)].progress = 0.75f + p * 0.25f;
-                    }).onFinally([=] {
-                        AThread::main()->enqueue([=] {
-                            state->isTestRunning = false;
-                            state->tests[static_cast<size_t>(TestType::SEQ)].progress = 1.0f;
-                            state->tests[static_cast<size_t>(TestType::RND)].progress = 1.0f;
-                            state->tests[static_cast<size_t>(TestType::ALL)].progress = 1.0f;
-                        });
-                    });
-                });
-            });
-        });
-    };
+    co_await allocateBuffer(state);
+       
+    // Run SEQ test first
+    co_await measure<TestType::SEQ, OperationType::READ>(state->buffer, state->threads, [=](aui::float_within_0_1 p, double speed) {
+        // SEQ read progress: 0-50% of SEQ test, 0-25% of overall
+        state->tests[static_cast<size_t>(TestType::SEQ)].progress = p * 0.5f;
+        state->tests[static_cast<size_t>(TestType::SEQ)].readBandwidth = speed;
+        // Overall progress: 0-25%
+        state->tests[static_cast<size_t>(TestType::ALL)].progress = p * 0.25f;
+    });
+    co_await measure<TestType::SEQ, OperationType::WRITE>(state->buffer, state->threads, [=](aui::float_within_0_1 p, double speed) {
+        // SEQ write progress: 50-100% of SEQ test, 25-50% of overall
+        state->tests[static_cast<size_t>(TestType::SEQ)].progress = 0.5f + p * 0.5f;
+        state->tests[static_cast<size_t>(TestType::SEQ)].writeBandwidth = speed;
+        // Overall progress: 25-50%
+        state->tests[static_cast<size_t>(TestType::ALL)].progress = 0.25f + p * 0.25f;
+    });
+
+    // Now run RND test
+    co_await measure<TestType::RND, OperationType::READ>(state->buffer, state->threads, [=](aui::float_within_0_1 p, double speed) {
+        // RND read progress: 0-50% of RND test, 50-75% of overall
+        state->tests[static_cast<size_t>(TestType::RND)].progress = p * 0.5f;
+        state->tests[static_cast<size_t>(TestType::RND)].readBandwidth = speed;
+        // Overall progress: 50-75%
+        state->tests[static_cast<size_t>(TestType::ALL)].progress = 0.5f + p * 0.25f;
+    });
+    co_await measure<TestType::RND, OperationType::WRITE>(state->buffer, state->threads, [=](aui::float_within_0_1 p, double speed) {
+        // RND write progress: 50-100% of RND test, 75-100% of overall
+        state->tests[static_cast<size_t>(TestType::RND)].progress = 0.5f + p * 0.5f;
+        state->tests[static_cast<size_t>(TestType::RND)].writeBandwidth = speed;
+        // Overall progress: 75-100%
+        state->tests[static_cast<size_t>(TestType::ALL)].progress = 0.75f + p * 0.25f;
+    });
 }
 
 template<TestType T>
@@ -284,7 +259,7 @@ static std::pair<std::variant<AString, _<AView>>, _<AView>> testRow(_<State> sta
             if (state->isTestRunning) {
                 return;
             }
-            runTestType<T>(state);
+            state->async << runTestType<T>(state);
         }),
         Horizontal {
             myProgressBarWithLabel(
@@ -311,7 +286,7 @@ AUI_ENTRY {
                     if (state->isTestRunning) {
                         return;
                     }
-                    runAllTests(state);
+                    state->async << runAllTests(state);
                 }),
                 Vertical {
                     Horizontal {
