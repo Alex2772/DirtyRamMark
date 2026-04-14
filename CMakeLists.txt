@@ -1,6 +1,6 @@
 # Standard routine
 cmake_minimum_required(VERSION 3.16)
-project(example_app
+project(dirty_ram_mark
         VERSION 0.0.12 # CI_PROJECT_VERSION
     )
 
@@ -19,7 +19,7 @@ include(${CMAKE_CURRENT_BINARY_DIR}/aui.boot.cmake)
 
 # import AUI
 auib_import(aui https://github.com/aui-framework/aui
-        COMPONENTS core views curl json crypt updater
+        COMPONENTS core views curl json crypt
         VERSION ${AUI_VERSION})
 
 
@@ -28,17 +28,14 @@ auib_import(aui https://github.com/aui-framework/aui
 aui_executable(${PROJECT_NAME})
 
 # Link required libs
-aui_link(${PROJECT_NAME} PRIVATE aui::core aui::views aui::updater)
+aui_link(${PROJECT_NAME} PRIVATE aui::core aui::views)
 
 # Compile assets
 aui_compile_assets(${PROJECT_NAME})
 
-# Enable testing
-aui_enable_tests(${PROJECT_NAME})
-
 # Setup icon, display name, etc
 aui_app(TARGET ${PROJECT_NAME}
-        NAME "AUI App Example"
+        NAME "DirtyRamMark"
         VENDOR "AUI Project"
         ICON "assets/img/icon.svg"
 )

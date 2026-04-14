@@ -1,92 +1,140 @@
-# Full-fledged AUI App Template
-
-> [!NOTE]
-> Click the <kbd>Use this template</kbd> button to setup your own AUI app project!
-
-It is a template repository that provides a pure template to make it easier to create a new AUI-based application
-project.
+# DirtyRamMark - Memory Bandwidth Benchmark Tool
 
 ![Screenshot](screenshot.png)
 
-The main goal of this template is to speed up the setup phase of application development for both new and experienced
-developers by preconfiguring the project scaffold and CI set up on GitHub.
+**DirtyRamMark** is a professional memory bandwidth benchmarking application that measures RAM performance with different access patterns. It provides accurate measurements of both sequential and random memory access speeds, helping developers and system administrators understand memory subsystem performance.
 
-This template project features:
-- Building, testing, code quality checking and releasing with [GitHub Actions](gh:actions)
-- Application auto updating (Windows only)
-- AUI assets
-- Tests
+## Features
 
-# Getting Started
+### 🚀 **Comprehensive Memory Testing**
+- **Sequential (SEQ) Tests**: Measure memory bandwidth with linear access patterns (cache-friendly)
+- **Random (RND) Tests**: Measure memory bandwidth with random access patterns (cache-unfriendly)
+- **All Tests**: Run both sequential and random tests in a single operation
 
-It is worth mentioning the benefits of using GitHub Templates. By created a new project using a template, you will start
-with no history or reference to this repository.
+### 📊 **Detailed Performance Metrics**
+- **Read Bandwidth**: Measures how fast data can be read from memory
+- **Write Bandwidth**: Measures how fast data can be written to memory
+- **Real-time Progress**: Visual progress bars for each test phase
+- **GB/s Measurements**: Results displayed in gigabytes per second
 
-## Continuous Integration
+### ⚙️ **Configurable Test Parameters**
+- **Buffer Size**: Adjustable from 1GB to large memory allocations
+- **Thread Count**: Automatic detection of CPU cores with manual override
+- **Multi-threaded**: Parallel testing across all available CPU cores
 
-In this project, continuous integration relies on [GitHub Actions](gh:actions), a set of workflows that enable
-automation of building, testing and releasing process.
+### 🎯 **Advanced Technical Features**
+- **Template-based architecture**: Clean separation of test patterns
+- **Thread-local random generators**: Avoid contention in random tests
+- **Progress tracking**: 0-50% for read tests, 50-100% for write tests
+- **AUI Framework**: Modern C++ GUI with responsive design
 
-In the `.github/workflows` directory, you can find definitions for the following GitHub Actions workflows:
-- [Build](.github/workflows/build.yml)
-  - Triggered on `push` and `pull_request` events.
-  - Caches AUI.Boot (`~/.aui`).
-    - AUI.Boot will pull precompiled AUI binaries in most cases.
-    - Subsequent builds are faster thanks to `cache` job, no matter whether AUI Boot pulled precompiled binaries.
-  - Builds the project for the supported platforms.
-  - Runs Tests.
-  - Generates installable packages.
-  - Prepares a draft release of the GitHub Releases page for manual review.
-- [Code Quality](.github/workflows/code-quality.yml)
-  - Triggered on `pull_request` events.
-  - Performs `clang-tidy` checks (static analysis) and generates nice summary with `.github/tidy-summary.py`.
-  - Performs `valgrind` checks on tests (dynamic analysis).
+## Usage
 
-  See [Memleak Demo PR](https://github.com/aui-framework/example_app/pull/3).
+### Running Tests
 
+1. **Configure Test Parameters**:
+   - Set buffer size (in GB) using the number picker
+   - Adjust thread count (defaults to CPU core count)
 
-## Code Quality and Formatting
+2. **Choose Test Mode**:
+   - **All Button**: Run both sequential and random tests (shows overall progress)
+   - **SEQ Button**: Run only sequential memory access tests
+   - **RND Button**: Run only random memory access tests
 
-The template includes `.clang-format` and `.clang-tidy`, the latter is used for code quality checks.
+3. **Monitor Progress**:
+   - Each test shows progress from 0-50% (read phase) and 50-100% (write phase)
+   - "All" test shows combined progress across all four phases
 
-## Release Process
+4. **View Results**:
+   - Read and write bandwidth displayed separately for each test type
+   - Results shown in GB/s for easy comparison
 
-To create a release, simply push an update to version in `CMakeLists.txt`. Pipeline will create a GitHub Release Draft
-for you. After release draft is created, perform manual review and submit release.
+### Understanding Results
 
-# Syncing with this template
+- **SEQ Results**: Represent best-case memory performance (cache hits)
+- **RND Results**: Represent worst-case memory performance (cache misses)
+- **Typical Pattern**: SEQ bandwidth > RND bandwidth due to cache effects
+- **Real-world Relevance**: Applications with good locality benefit from SEQ patterns, while random access patterns show memory subsystem limits
 
-In some cases, you might want to sync with this template. Generally, you would want to sync with CI/CD stuff
-(`.github`). If such, use some git techniques:
+## Building from Source
 
-```shell
-# only for the first time
-git remote add template https://github.com/aui-framework/example_app
+### Prerequisites
+- CMake 3.16 or higher
+- C++20 compatible compiler
+- Git
 
-# syncing
-git fetch template
-git merge template/master --allow-unrelated-histories 
+### Build Instructions
 
-# from now on, check git status and throw out anything you don't need
+```bash
+# Clone the repository
+git clone <repository-url>
+cd dirtymemmark
 
-# remove unwanted files, i.e., SumTest.cpp:
-git rm tests/SumTest.cpp -f
+# Configure with CMake
+cmake -B build -DCMAKE_BUILD_TYPE=Release
 
-# keep YOURS src, tests, CMakeLists:
-git checkout HEAD -- CMakeLists.txt src tests
+# Build the project
+cmake --build build --parallel
+
+# Run the application
+./build/bin/dirty_ram_mark
 ```
 
-# IDE setup
+### Development Build
 
-## CLion
+For development with debugging symbols:
 
-Works out of the box.
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build --parallel
+```
 
-## VS Code
+## Technical Details
 
-1. Install extensions recommended by workspace. You can see them in `.vscode/extensions.json`.
-2. Check and adjust `.vscode/settings.json` if needed.
-3. Hit `F1` & type `CMake: Build`. If it asks for a toolchain, choose "Unspecified".
-4. After build is complete, in the left bar, choose CMake logo. In the tree view, right click on "example_app", choose
-   "Set as Build Target", and also "Set as Debug Target".
-5. `F1` & `CMake: Debug`.
+### Architecture
+- **Test Patterns**: Template-based implementation for SEQ and RND access
+- **Memory Access**: Uses `glm::dvec4` buffers (32 bytes per element)
+- **Progress Calculation**: Linear interpolation based on bytes processed
+- **Bandwidth Formula**: `buffer_size_bytes / elapsed_time`
+
+### Threading Model
+- Each test divides work across configured thread count
+- Thread-local random number generators for RND tests
+- Progress updates synchronized to main UI thread
+
+### Performance Considerations
+- Buffer allocation happens once per test run
+- Random index generation optimized to minimize overhead
+- Progress updates batched to reduce UI thread load
+
+## Project Structure
+
+```
+dirtymemmark/
+├── CMakeLists.txt          # Build configuration
+├── src/
+│   └── main.cpp           # Main application logic and UI
+├── assets/
+│   └── img/               # Application assets
+├── build/                 # Build directory (generated)
+└── README.md             # This file
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Ensure code builds without errors
+5. Submit a pull request
+
+### Code Style
+- Follow existing code patterns
+- Use descriptive variable names
+- Add comments for complex logic
+- Maintain template-based architecture for test patterns
+
+## Acknowledgments
+
+- Built with the [AUI Framework](https://github.com/aui-framework/aui)
+- Uses modern C++20 features
