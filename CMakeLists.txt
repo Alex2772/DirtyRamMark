@@ -28,7 +28,7 @@ auib_import(aui https://github.com/aui-framework/aui
 aui_executable(${PROJECT_NAME})
 
 # Link required libs
-aui_link(${PROJECT_NAME} PRIVATE aui::core aui::views)
+aui_link(${PROJECT_NAME} PRIVATE aui::core aui::views aui::json)
 
 # Compile assets
 aui_compile_assets(${PROJECT_NAME})
