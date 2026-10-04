@@ -55,16 +55,17 @@ AJson::Object memory_timings::readAmdTimings(const CpuId& cpu) {
         }
     }
     auto values = readSmn(addresses);
-    if (!values) {
+    if (!values || values->size() < addresses.size()) {
         return {};
     }
 
+    const auto& valueList = *values;
     AJson::Object result;
     size_t i = 0;
     for (unsigned channel = 0; channel < AMD_CHANNELS_TO_PROBE; ++channel) {
         AMap<uint32_t, uint32_t> registers;
         for (auto address : amdUmcRegisters()) {
-            registers[address] = (*values)[i++];
+            registers[address] = valueList[i++];
         }
         auto decoded = decodeAmdUmc(registers, type);
         if (!decoded.empty()) {

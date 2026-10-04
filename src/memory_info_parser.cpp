@@ -28,7 +28,7 @@ AJson::Object memory_info::assemble(const AMap<AString, AString>& memoryArray,
 
 AJson::Object parseDmidecodeOutput(const AString& dmidecodeOutput) {
     AJson::Object result;
-    auto lines = dmidecodeOutput.split('\n');
+    auto lines = dmidecodeOutput.replacedAll("\r", "").split('\n');
     
     // Parse different sections
     int currentDmiType = -1;
