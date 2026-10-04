@@ -37,11 +37,17 @@ AString sizeText(uint64_t megabytes) {
 
 AString memoryTypeName(uint8_t type) {
     switch (type) {
+        case 0x07: return "QEMU?";
         case 0x12: return "DDR";
         case 0x13: return "DDR2";
         case 0x18: return "DDR3";
         case 0x1a: return "DDR4";
+        case 0x1b: return "LPDDR";
+        case 0x1c: return "LPDDR2";
+        case 0x1d: return "LPDDR3";
+        case 0x1e: return "LPDDR4";
         case 0x22: return "DDR5";
+        case 0x23: return "LPDDR5";
         default: return "";
     }
 }
@@ -137,7 +143,8 @@ AJson::Object parseSmbiosTable(const AByteBuffer& table) {
             parseMemoryArray(s, memoryArray);
         } else if (s.type == TYPE_MEMORY_DEVICE) {
             auto device = parseMemoryDevice(s);
-            if (device.contains("Type") && memory_info::isDdr(device["Type"])) {
+            // some firmwares report a generic type (e.g. "RAM") or none at all; a populated socket is a slot regardless
+            if (!device.empty()) {
                 devices << std::move(device);
             }
         } else if (s.type == TYPE_END) {
