@@ -56,6 +56,25 @@
 - **Typical Pattern**: SEQ bandwidth > RND bandwidth due to cache effects
 - **Real-world Relevance**: Applications with good locality benefit from SEQ patterns, while random access patterns show memory subsystem limits
 
+## CLI mode (AI workflows)
+
+DirtyRamMark can run without a GUI and print everything it knows about the memory as JSON, which makes it easy to call
+from scripts and AI workflows (coding agents, CI jobs, automated tuning loops):
+
+```bash
+./dirty_ram_mark --json
+```
+
+- Prints a single JSON object to **stdout** and exits: `{"version", "controller", "memory", "timings"}`. `controller` tells which memory controller the
+  timings come from (`{"vendor": "AMD" | "Intel", "family", "model"}`), `memory` describes the
+  installed modules (from `dmidecode`), `timings` holds the actual DRAM timings programmed into the memory controller,
+  with units (e.g. `"CAS Latency (CL)": "18 clocks"`).
+- A section that fails is reported as `{"error": "..."}` instead of failing the whole report.
+- Logs and diagnostics go to **stderr**, so stdout can be parsed as is.
+- Reading the real timings requires root; `pkexec` will ask for authorization, so an agent needs a session where it can
+  be approved. Real timings are supported on AMD Zen and on Intel Skylake..Comet Lake / Alder..Raptor Lake.
+- `./dirty_ram_mark --help` prints the usage. The benchmark itself is GUI-only for now.
+
 ## Building from Source
 
 ### Prerequisites

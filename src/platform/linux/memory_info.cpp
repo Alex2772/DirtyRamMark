@@ -2,6 +2,7 @@
 
 #include <AUI/Common/AByteBuffer.h>
 #include <memory_info.h>
+#include <memory_timings.h>
 #include <AUI/IO/AFileInputStream.h>
 #include <AUI/IO/AStringStream.h>
 #include <AUI/Util/ATokenizer.h>
@@ -205,5 +206,6 @@ static AString dmiencode() {
 }
 
 AJson::Object memoryInfo() {
-    return parseDmidecodeOutput(dmiencode());
+    auto result = parseDmidecodeOutput(dmiencode());
+    return result;
 }

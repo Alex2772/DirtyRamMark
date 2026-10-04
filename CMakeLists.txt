@@ -1,21 +1,17 @@
 # Standard routine
 cmake_minimum_required(VERSION 3.16)
 project(dirty_ram_mark
-        VERSION 0.0.12 # CI_PROJECT_VERSION
+        VERSION 0.0.13 # CI_PROJECT_VERSION
     )
 
 option(BUILD_SHARED_LIBS "Build shared libs" OFF)
 option(AUIB_FORCE_PRECOMPILED "AUI.Boot: force precompiled dependencies" OFF)
 option(AUIB_NO_PRECOMPILED "AUI.Boot: disable precompiled dependencies" OFF)
 
-set(AUI_VERSION e55a0a62825787a68ea06d14a17bd13af68add20)
+set(AUI_VERSION v8.0.0-rc.32)
 
 # Use AUI.Boot
-file(
-        DOWNLOAD
-        https://raw.githubusercontent.com/aui-framework/aui/${AUI_VERSION}/aui.boot.cmake
-        ${CMAKE_CURRENT_BINARY_DIR}/aui.boot.cmake)
-include(${CMAKE_CURRENT_BINARY_DIR}/aui.boot.cmake)
+include(aui.boot.cmake)
 
 # import AUI
 auib_import(aui https://github.com/aui-framework/aui
@@ -39,6 +35,7 @@ aui_enable_tests(${PROJECT_NAME})
 # Setup icon, display name, etc
 aui_app(TARGET ${PROJECT_NAME}
         NAME "DirtyRamMark"
+        ID "ru.alex2772.dirtyrammark"
         VENDOR "AUI Project"
         ICON "assets/img/icon.svg"
 )
