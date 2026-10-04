@@ -73,6 +73,8 @@ from scripts and AI workflows (coding agents, CI jobs, automated tuning loops):
 - Logs and diagnostics go to **stderr**, so stdout can be parsed as is.
 - Reading the real timings requires root; `pkexec` will ask for authorization, so an agent needs a session where it can
   be approved. Real timings are supported on AMD Zen and on Intel Skylake..Comet Lake / Alder..Raptor Lake.
+- On Windows (`src/platform/win32`) the installed modules are read from CIM (`Win32_PhysicalMemory`) via PowerShell; the actual
+  timings are not supported there yet (they need a kernel driver), so `timings` is `{"error": ...}`.
 - `./dirty_ram_mark --help` prints the usage. The benchmark itself is GUI-only for now.
 
 ## Building from Source

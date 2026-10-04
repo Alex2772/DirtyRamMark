@@ -35,6 +35,9 @@ AString controllerVendor(const CpuId& cpu);
 /// @return {"vendor", "family", "model"} describing the memory controller.
 AJson::Object describeController(const CpuId& cpu);
 
+/// Reads timings of all probed channels. Needs root (pkexec). Returns an empty object on failure.
+AJson::Object readAmdTimings(const CpuId& cpu);
+
 /// Zen 4/5 use DDR5, everything older uses DDR4.
 AmdDdrType amdDdrTypeOf(unsigned family, unsigned model);
 
