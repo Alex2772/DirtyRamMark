@@ -5,6 +5,7 @@
 
 #include <AUI/Common/AException.h>
 #include <memory_timings.h>
+#include <privileges.h>
 
 using namespace memory_timings;
 
@@ -32,7 +33,28 @@ CpuId memory_timings::readCpuId() {
 }
 
 AJson::Object memoryTimings() {
-    // The memory controller registers (AMD SMN, Intel MCHBAR) are reachable only from ring 0 on Windows, which needs a
-    // signed kernel driver.
-    throw AException("Reading the actual DRAM timings is not supported on Windows yet");
+    if (!privileges::isGranted()) {
+        throw privileges::Required("Administrator rights are required to read the memory controller registers");
+    }
+    // The memory controller registers (AMD SMN, Intel MCHBAR) are reachable only from ring 0 on Windows, hence the
+    // temporary driver (see driver.h).
+    const auto cpu = readCpuId();
+    AJson::Object timings;
+    if (cpu.vendor == "AuthenticAMD") {
+        timings = readAmdTimings(cpu);
+    } else if (cpu.vendor == "GenuineIntel") {
+        auto layout = intelLayoutOf(cpu.family, cpu.model);
+        if (!layout) {
+            throw AException("Unsupported Intel CPU: family {}, model {}"_format(cpu.family, cpu.model));
+        }
+        timings = readIntelTimings(*layout);
+    } else {
+        throw AException("Unsupported CPU vendor \"{}\""_format(cpu.vendor));
+    }
+
+    AJson::Object result;
+    for (auto& [channel, t] : timings) {
+        result["Timings - {}"_format(channel)] = std::move(t);
+    }
+    return result;
 }

@@ -5,6 +5,7 @@
 #include <AUI/Logging/ALogger.h>
 #include <AUI/Platform/AProcess.h>
 #include <memory_timings.h>
+#include <privileges.h>
 
 using namespace memory_timings;
 
@@ -16,6 +17,9 @@ CpuId memory_timings::readCpuId() {
 
 
 AJson::Object memoryTimings() {
+    if (!privileges::isGranted()) {
+        throw privileges::Required("The memory controller registers can be read by root only");
+    }
     auto cpu = readCpuId();
     auto timings = [&] {
         if (cpu.vendor == "AuthenticAMD") {

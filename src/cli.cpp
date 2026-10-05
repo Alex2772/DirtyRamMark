@@ -13,6 +13,7 @@
 #include "cli.h"
 #include "memory_info.h"
 #include "memory_timings.h"
+#include "privileges.h"
 
 namespace {
 
@@ -42,13 +43,16 @@ std::optional<int> runCli(const AStringVector& args) {
     if (args.contains("--help") || args.contains("-h")) {
         std::cout << "Usage: dirty_ram_mark [--json]\n"
                      "  --json   print memory info and actual DRAM timings as JSON to stdout and exit (no GUI).\n"
-                     "           Needs root for the real timings: pkexec is asked for authorization (Linux only).\n"
+                     "           Needs root for the real timings: pkexec is asked for authorization (Linux), administrator\n"
+                     "           rights are required on Windows.\n"
                      "           Logs go to stderr.\n";
         return 0;
     }
     if (!args.contains("--json")) {
         return std::nullopt;
     }
+
+    privileges::grant();
 
     // The AUI logger writes to stdout (including its first-use "Log file:" line). While collecting, point stdout at
     // stderr so the logger can't pollute it, then restore it and print the report with std::cout.
