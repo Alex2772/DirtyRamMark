@@ -74,8 +74,13 @@ if (WIN32)
 
         message(STATUS "WDK_ROOT: ${WDK_ROOT}")
 
-        get_filename_component(_cl_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
-        get_filename_component(_cl_inc "${_cl_dir}/../../../include" ABSOLUTE)
+        # cl.exe is only next to the compiler when it is MSVC; otherwise (clang) make.bat locates Visual Studio itself
+        set(_cl_dir "")
+        set(_cl_inc "")
+        if (MSVC AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+            get_filename_component(_cl_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+            get_filename_component(_cl_inc "${_cl_dir}/../../../include" ABSOLUTE)
+        endif ()
         set(DRIVER_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/driver_out)
         set(DRIVER_SYS ${DRIVER_OUT_DIR}/dirtyrammark.sys)
         add_custom_command(

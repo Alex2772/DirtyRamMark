@@ -12,6 +12,8 @@ setlocal
 rem CL_DIR, CL_INCLUDE (set by CMake): MSVC bin and include directories, when not run from a Native Tools prompt
 if not "%CL_DIR%"=="" set PATH=%CL_DIR:/=\%;%PATH%
 if not "%CL_INCLUDE%"=="" set INCLUDE=%CL_INCLUDE:/=\%;%INCLUDE%
+rem no MSVC on PATH (e.g. the build is driven by clang): load the Visual Studio x64 environment found with vswhere
+where cl >nul 2>nul || call :vsenv || exit /b 1
 if "%WDK_ROOT%"=="" (
     echo set WDK_ROOT to the unpacked Microsoft.Windows.WDK.x64 package ^(the folder with Include and Lib^)
     exit /b 1
@@ -44,3 +46,11 @@ link /nologo /DRIVER /SUBSYSTEM:NATIVE /ENTRY:DriverEntry /NODEFAULTLIB /RELEASE
    /LIBPATH:"%WDK_ROOT%\Lib\%WDK_VERSION%\km\x64" ntoskrnl.lib hal.lib wdmsec.lib BufferOverflowFastFailK.lib || exit /b 1
 
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0sign.ps1" "%OUT%\dirtyrammark.sys" || exit /b 1
+
+:vsenv
+set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+if not exist "%VSWHERE%" (echo cl.exe not found and vswhere is missing & exit /b 1)
+for /f "usebackq delims=" %%I in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSDIR=%%I"
+if "%VSDIR%"=="" (echo cl.exe not found: no Visual Studio with the C++ tools & exit /b 1)
+call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" >nul || exit /b 1
+exit /b 0
