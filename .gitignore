@@ -2,3 +2,5 @@
 cmake-build-**
 *build*
 .DS_Store
+
+driver/obj/
