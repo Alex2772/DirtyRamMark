@@ -45,6 +45,8 @@ link /nologo /DRIVER /SUBSYSTEM:NATIVE /ENTRY:DriverEntry /NODEFAULTLIB /RELEASE
    "%OBJ%\dirtyrammark.obj" ^
    /LIBPATH:"%WDK_ROOT%\Lib\%WDK_VERSION%\km\x64" ntoskrnl.lib hal.lib wdmsec.lib BufferOverflowFastFailK.lib || exit /b 1
 
+rem a PSModulePath inherited from PowerShell 7 hides the Windows PowerShell security modules (no Cert: drive)
+set PSModulePath=
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0sign.ps1" "%OUT%\dirtyrammark.sys" || exit /b 1
 
 :vsenv
