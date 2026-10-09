@@ -103,20 +103,21 @@ jobs:
         working-directory: ${{github.workspace}}/build/bin
         run: ${{github.workspace}}/build/bin/Tests
 
-      - name: Pack Windows Setup
-        if: runner.os == 'Windows'
-        working-directory: ${{github.workspace}}/build
-        run: |
-          cmake . -DAUI_APP_PACKAGING=INNOSETUP
-          cmake --build . --config RelWithDebInfo
-          cpack . -CRelWithDebInfo -B artifacts
-
       - name: Pack Portable
         working-directory: ${{github.workspace}}/build
         run: |
           cmake . -DAUI_APP_PACKAGING=${{ runner.os == 'Linux' && 'AUI_PORTABLE_TGZ' || 'AUI_PORTABLE_ZIP' }}
           cmake --build . --config RelWithDebInfo
           cpack . -CRelWithDebInfo -B artifacts
+
+      - name: Pack AppImage
+        if: runner.os == 'Linux'
+        working-directory: ${{github.workspace}}/build
+        run: |
+          cmake . -DAUI_APP_PACKAGING=AUI_APPIMAGE
+          cmake --build . --config RelWithDebInfo
+          cpack . -CRelWithDebInfo -B artifacts
+          rm -f artifacts/*.json # CPack External generator's manifest
 
       - name: Upload
         uses: actions/upload-artifact@v4
@@ -140,7 +141,7 @@ jobs:
           VERSION=$(grep -Po '[0-9\.]+(?= # CI_PROJECT_VERSION)' CMakeLists.txt)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "VERSION = $VERSION"
-          
+
       # Remove old release drafts
       - name: Remove Old Release Drafts
         env:
