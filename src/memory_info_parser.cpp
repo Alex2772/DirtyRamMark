@@ -22,6 +22,11 @@ AJson::Object memory_info::assemble(const AMap<AString, AString>& memoryArray,
         for (const auto& [key, value] : device) {
             slot[key] = value;
         }
+        if (auto name = productName(device.contains("Manufacturer") ? device.at("Manufacturer") : AString {},
+                                    device.contains("Part Number") ? device.at("Part Number") : AString {});
+            !name.empty()) {
+            slot["Name"] = name;
+        }
     }
     return result;
 }

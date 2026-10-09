@@ -21,6 +21,7 @@ TEST(DmidecodeParser, ParseSampleOutput) {
         EXPECT_EQ(slot["Type"].asString(), "DDR4");
         EXPECT_EQ(slot["Speed"].asString(), "3600 MT/s");
         EXPECT_EQ(slot["Part Number"].asString(), "KF3600C18D4/32GX");
+        EXPECT_EQ(slot["Name"].asString(), "Kingston FURY Beast");
     }
     EXPECT_FALSE(entries.contains("Slot 4"));
 }
@@ -149,4 +150,38 @@ TEST(SmbiosParser, GarbageIsHandled) {
     table.write("\x11\xff\x00", 3);
     EXPECT_EQ(parseSmbiosTable(table).size(), 0);
     EXPECT_EQ(parseSmbiosTable(AByteBuffer {}).size(), 0);
+}
+
+TEST(ProductName, KnownModules) {
+    struct Case { const char* manufacturer; const char* partNumber; const char* expected; };
+    for (const auto& c : std::initializer_list<Case> {
+             {"Kingston", "KF3600C18D4/32GX", "Kingston FURY Beast"},
+             {"Kingston", "KF432C16BB1AK2/32", "Kingston FURY Beast RGB"},
+             {"Kingston", "KF560C36BWEAK2/32", "Kingston FURY Beast RGB"},
+             {"Kingston", "KF548S38IB-16", "Kingston FURY Impact"},
+             {"Kingston", "KF436C17RB/16", "Kingston FURY Renegade"},
+             {"Kingston", "HX432C16PB3K2/16", "HyperX Predator"},
+             {"Kingston", "HX426C16FB3/16", "HyperX Fury"},
+             {"Corsair", "CMK32GX4M2Z3200C16", "Corsair Vengeance LPX"},
+             {"Corsair", "CMH32GX5M2B6000C30", "Corsair Vengeance RGB"},
+             {"Corsair", "CMT64GX5M2B5600C40", "Corsair Dominator Platinum RGB"},
+             {"Unknown", "CMD8GX3M4A1600C8", "Corsair Dominator Platinum"},
+             {"G Skill Intl", "F4-3600C16D-32GTZN", "G.Skill Trident Z Neo"},
+             {"G Skill Intl", "F5-6000J3038F16GX2-TZ5RK", "G.Skill Trident Z5 RGB"},
+             {"G Skill Intl", "F5-6000J3636F16GX2-FX5", "G.Skill Flare X5"},
+             {"Crucial Technology", "BL16G36C16U4B.M8FB1", "Crucial Ballistix"},
+             {"Crucial Technology", "BLS8G4D32AESBK", "Crucial Ballistix Sport"},
+             {"Crucial Technology", "CP16G60C36U5B", "Crucial Pro"},
+             {"Micron Technology", "CT16G4DFRA32A.C16FP", "Crucial DDR4 DIMM"},
+             {"Team Group Inc.", "TLZGD416G3200HC16CDC01", "Team T-Force Vulcan Z"},
+             {"ADATA", "AX4U320038G16A-DT50", "XPG Spectrix D50"},
+             {"ADATA", "AX5U6000C3016G-DCLARBK", "XPG Lancer RGB"},
+             {"Patriot", "PVSR416G320C8K", "Patriot Viper Steel RGB"},
+             {"Samsung", "M378A1K43DB2-CTD", "Samsung DDR4 UDIMM"},
+             {"SK Hynix", "HMCG78AEBUA081N", "SK hynix DDR5"},
+             {"Kingston", "99U5471-054.A00LF", ""},
+             {"Test Manufacturer", "", ""},
+         }) {
+        EXPECT_EQ(memory_info::productName(c.manufacturer, c.partNumber), c.expected) << c.partNumber;
+    }
 }

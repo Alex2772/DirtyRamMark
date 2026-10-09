@@ -31,8 +31,10 @@ using namespace declarative;
 static AArc<AView> genericScrollable(AArc<AView> contents) {
     return AScrollArea::Builder()
         .withContents(std::move(contents))
-        .withExpanding()
-        .build() AUI_OVERRIDE_STYLE { MinSize { 500_dp } };
+        .build() AUI_OVERRIDE_STYLE {
+            MinSize { 500_dp },
+            Expanding {0, 1},
+        };
 }
 
 /// Builds the "Upgrade privileges" prompt for the tab.
