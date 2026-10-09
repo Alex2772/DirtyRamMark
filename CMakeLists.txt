@@ -7,7 +7,7 @@ project(dirty_ram_mark
 option(BUILD_SHARED_LIBS "Build shared libs" OFF)
 option(AUIB_FORCE_PRECOMPILED "AUI.Boot: force precompiled dependencies" OFF)
 option(AUIB_NO_PRECOMPILED "AUI.Boot: disable precompiled dependencies" OFF)
-set(AUI_COROUTINES "Use C++20 coroutines" ON)
+set(AUI_COROUTINES ON CACHE BOOL "Use C++20 coroutines" FORCE) # AUI disables it on clang < 21 by default
 
 set(AUI_VERSION v8.0.0-rc.32)
 
