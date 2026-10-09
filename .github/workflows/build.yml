@@ -83,7 +83,7 @@ jobs:
           echo "CXX=clang++" >> $env:GITHUB_ENV
 
       - name: Configure CMake
-        run: cmake -G "Ninja" -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=RelWithDebInfo ${{ runner.os == 'Windows' && '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded' || '' }} -DAUI_INSTALL_RUNTIME_DEPENDENCIES=TRUE
+        run: cmake -G "Ninja" -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=RelWithDebInfo ${{ runner.os == 'Windows' && '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded' || '' }} -DAUI_INSTALL_RUNTIME_DEPENDENCIES=TRUE ${{ runner.os != 'Linux' && '-DAUIB_NO_PRECOMPILED=TRUE' || '' }}
 
       - name: Build Project
         run: cmake --build ${{github.workspace}}/build --config RelWithDebInfo
