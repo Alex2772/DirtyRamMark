@@ -2,6 +2,9 @@
 #include <range/v3/all.hpp>
 #include <range/v3/range/conversion.hpp>
 #include "generic_key_value_cloud.h"
+
+#include "product_image.h"
+
 #include <AUI/ASS/Property/MinSize.h>
 #include <AUI/View/AText.h>
 #include <AUI/View/AButton.h>
@@ -83,13 +86,15 @@ static _<AView> impl(const AJson::Object& entries, const RenderFlags& flags) {
                 Label { e.first } AUI_OVERRIDE_STYLE {
                     Expanding{},
                     ATextAlign::RIGHT,
+                    MinSize { 100_dp, {} },
                 },
                 SpacerFixed { 2_dp },
                 dispatch(e.second, flags) AUI_LET { it->setExpanding(); },
             } AUI_OVERRIDE_STYLE {
                 Padding { 1_px, 0 },
             };
-    });
+    }) | ranges::to_vector;
+
 
     auto container = [&]() -> AArc<AView> {
         switch (flags.container) {
@@ -111,6 +116,27 @@ static _<AView> impl(const AJson::Object& entries, const RenderFlags& flags) {
         ATextAlign::JUSTIFY,
         MinSize { 380_dp, {} },
     });
+
+    AVector<AArc<AView>> header;
+    for (const auto&[k,v] : entries) {
+        if (k != "Name" && k != "Manufacturer") {
+            continue;
+        }
+        auto str = v.asStringOpt();
+        if (!str) {
+            continue;
+        }
+        if (auto v = ui::ProductImage{.name = std::move(*str)}()) {
+            header << std::move(v);
+        }
+    }
+    if (!header.empty()) {
+        container->setExpanding();
+        return Horizontal {
+            std::move(container),
+            Vertical { std::move(header) } AUI_OVERRIDE_STYLE { LayoutSpacing { 4_dp } }
+        };
+    }
     return container;
 }
 

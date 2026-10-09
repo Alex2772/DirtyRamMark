@@ -21,6 +21,9 @@ bool isPlaceholder(const AString& value);
 /// Only DDR modules are reported as slots.
 bool isDdr(const AString& type);
 
+/// Marketing name guessed from the manufacturer and part number (SMBIOS has no such field); empty if unknown.
+AString productName(const AString& manufacturer, const AString& partNumber);
+
 /// Builds the report: "Memory Array - <key>" entries and "Slot N" objects.
 AJson::Object assemble(const AMap<AString, AString>& memoryArray, const AVector<AMap<AString, AString>>& devices);
 
