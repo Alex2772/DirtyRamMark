@@ -7,7 +7,6 @@ project(dirty_ram_mark
 option(BUILD_SHARED_LIBS "Build shared libs" OFF)
 option(AUIB_FORCE_PRECOMPILED "AUI.Boot: force precompiled dependencies" OFF)
 option(AUIB_NO_PRECOMPILED "AUI.Boot: disable precompiled dependencies" OFF)
-set(AUI_COROUTINES ON CACHE BOOL "Use C++20 coroutines" FORCE) # AUI disables it on clang < 21 by default
 
 set(AUI_VERSION v8.0.0-rc.32)
 
@@ -17,7 +16,8 @@ include(aui.boot.cmake)
 # import AUI
 auib_import(aui https://github.com/aui-framework/aui
         COMPONENTS core views curl json crypt
-        VERSION ${AUI_VERSION})
+        VERSION ${AUI_VERSION}
+        CMAKE_ARGS -DAUI_COROUTINES=ON) # AUI disables coroutines on clang < 21 (Windows/macOS CI) by default
 
 
 # Create the executable. This function automatically links all sources from the src/ folder,
