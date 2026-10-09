@@ -16,7 +16,8 @@ include(aui.boot.cmake)
 # import AUI
 auib_import(aui https://github.com/aui-framework/aui
         COMPONENTS core views curl json crypt
-        VERSION ${AUI_VERSION})
+        VERSION ${AUI_VERSION}
+        CMAKE_ARGS -DAUI_COROUTINES=ON) # AUI disables coroutines on clang < 21 (Windows/macOS CI) by default
 
 
 # Create the executable. This function automatically links all sources from the src/ folder,

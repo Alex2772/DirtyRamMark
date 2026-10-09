@@ -33,14 +33,12 @@ jobs:
         id: cache-aui-boot
         uses: actions/cache@v3
         env:
-          cache-name: aui-boot
+          cache-name: aui-boot-coro # bumped: AUI must be rebuilt with AUI_COROUTINES=ON
         with:
           path: ~/.aui
           key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/CMakeLists.txt') }}
           restore-keys: |
             ${{ runner.os }}-build-${{ env.cache-name }}-
-            ${{ runner.os }}-build-
-            ${{ runner.os }}-
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
@@ -85,7 +83,7 @@ jobs:
           echo "CXX=clang++" >> $env:GITHUB_ENV
 
       - name: Configure CMake
-        run: cmake -G "Ninja" -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=RelWithDebInfo ${{ runner.os == 'Windows' && '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded' || '' }} -DAUI_INSTALL_RUNTIME_DEPENDENCIES=TRUE
+        run: cmake -G "Ninja" -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=RelWithDebInfo ${{ runner.os == 'Windows' && '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded' || '' }} -DAUI_INSTALL_RUNTIME_DEPENDENCIES=TRUE ${{ runner.os != 'Linux' && '-DAUIB_NO_PRECOMPILED=TRUE' || '' }}
 
       - name: Build Project
         run: cmake --build ${{github.workspace}}/build --config RelWithDebInfo
