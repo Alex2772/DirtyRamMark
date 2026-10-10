@@ -43,10 +43,6 @@ private:
 /// @return true if privileged queries are allowed right now.
 bool isGranted();
 
-/// Allows privileged queries without leaving the process (CLI). On Windows only an elevated process is granted, so
-/// this does nothing there.
-void grant();
-
 /// Obtains privileges for the UI. May restart the application (Windows), in which case it doesn't return.
 /// @throws AException if the user declined.
 void upgrade();

@@ -13,7 +13,7 @@
 #include "cli.h"
 #include "memory_info.h"
 #include "memory_timings.h"
-#include "privileges.h"
+#include "system_info.h"
 
 namespace {
 
@@ -33,6 +33,7 @@ AJson::Object section(const char* name, const std::function<AJson::Object()>& qu
 AJson::Object collectReport() {
     AJson::Object report;
     report["version"] = AString(AUI_PP_STRINGIZE(AUI_CMAKE_PROJECT_VERSION));
+    report["general"] = section("general", [] { return systemInfo(); });
     report["controller"] = memory_timings::describeController(memory_timings::readCpuId());
     report["memory"] = section("memory", [] { return memoryInfo(); });
     report["timings"] = section("timings", [] { return memoryTimings(); });
@@ -42,17 +43,15 @@ AJson::Object collectReport() {
 std::optional<int> runCli(const AStringVector& args) {
     if (args.contains("--help") || args.contains("-h")) {
         std::cout << "Usage: dirty_ram_mark [--json]\n"
-                     "  --json   print memory info and actual DRAM timings as JSON to stdout and exit (no GUI).\n"
-                     "           Needs root for the real timings: pkexec is asked for authorization (Linux), administrator\n"
-                     "           rights are required on Windows.\n"
+                     "  --json   print general system info, memory info and actual DRAM timings as JSON to stdout and exit (no GUI).\n"
+                     "           Never asks for authorization: the real timings and the memory modules info are reported as\n"
+                     "           errors unless the process is already root (Linux) / administrator (Windows).\n"
                      "           Logs go to stderr.\n";
         return 0;
     }
     if (!args.contains("--json")) {
         return std::nullopt;
     }
-
-    privileges::grant();
 
     // The AUI logger writes to stdout (including its first-use "Log file:" line). While collecting, point stdout at
     // stderr so the logger can't pollute it, then restore it and print the report with std::cout.
