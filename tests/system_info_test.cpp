@@ -125,8 +125,3 @@ TEST(SystemInfo, Mounts) {
     EXPECT_EQ(mounts[0].fileSystem, "btrfs");
     EXPECT_EQ(mounts[1].mountPoint, "/run/media/user/My Disk");
 }
-
-TEST(SystemInfo, Trim) {
-    EXPECT_EQ(trim("\t a b \r\n"), "a b");
-    EXPECT_EQ(trim("   "), "");
-}

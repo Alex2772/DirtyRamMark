@@ -35,7 +35,7 @@ uint32_t reg(const AMap<uint32_t, uint32_t>& registers, uint32_t offset) {
 
 }   // namespace
 
-std::optional<IntelLayout> memory_timings::intelLayoutOf(unsigned family, unsigned model) {
+AOptional<IntelLayout> memory_timings::intelLayoutOf(unsigned family, unsigned model) {
     if (family != 6) {
         return std::nullopt;
     }

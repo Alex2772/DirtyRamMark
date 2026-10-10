@@ -10,7 +10,7 @@
 
 namespace {
 
-std::optional<std::string> sysctlString(const char* name) {
+AOptional<std::string> sysctlString(const char* name) {
     size_t size = 0;
     if (sysctlbyname(name, nullptr, &size, nullptr, 0) != 0 || size == 0) {
         return std::nullopt;
@@ -24,7 +24,7 @@ std::optional<std::string> sysctlString(const char* name) {
 }
 
 template <class T>
-std::optional<T> sysctlValue(const char* name) {
+AOptional<T> sysctlValue(const char* name) {
     T value {};
     size_t size = sizeof(value);
     if (sysctlbyname(name, &value, &size, nullptr, 0) != 0) {

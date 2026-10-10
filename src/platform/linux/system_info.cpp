@@ -10,7 +10,7 @@
 
 namespace {
 
-std::optional<AString> readFile(const APath& path) {
+AOptional<AString> readFile(const APath& path) {
     try {
         return AString::fromUtf8(AByteBuffer::fromStream(AFileInputStream(path)));
     } catch (const AException&) {
@@ -18,9 +18,9 @@ std::optional<AString> readFile(const APath& path) {
     }
 }
 
-AString readTrimmed(const APath& path) { return system_info::trim(readFile(path).value_or(AString {})); }
+AString readTrimmed(const APath& path) { return AString(readFile(path).valueOr(AString {}).trim(" \t\r\n")); }
 
-std::optional<AString> env(const char* name) {
+AOptional<AString> env(const char* name) {
     if (const char* v = std::getenv(name); v && *v) {
         return AString::fromUtf8(v);
     }
@@ -34,7 +34,7 @@ uint16_t readHex(const APath& path) {
 
 void addOs(AJson::Object& result) {
     const auto osRelease = system_info::parseOsRelease(
-        readFile("/etc/os-release").value_or(readFile("/usr/lib/os-release").value_or(AString {})));
+        readFile("/etc/os-release").valueOr(readFile("/usr/lib/os-release").valueOr(AString {})));
     AString name;
     if (auto it = osRelease.find("PRETTY_NAME"); it != osRelease.end()) {
         name = it->second;
@@ -71,7 +71,7 @@ void addDmi(AJson::Object& result) {
 }
 
 void addCpu(AJson::Object& result) {
-    const auto cpu = system_info::parseCpuInfo(readFile("/proc/cpuinfo").value_or(AString {}));
+    const auto cpu = system_info::parseCpuInfo(readFile("/proc/cpuinfo").valueOr(AString {}));
     AString text = cpu.model.empty() ? AString("Unknown") : cpu.model;
     if (cpu.threads > 0) {
         text += cpu.cores != cpu.threads ? " ({} cores, {} threads)"_format(cpu.cores, cpu.threads)
@@ -121,7 +121,7 @@ void addGpus(AJson::Object& result) {
 }
 
 void addMemory(AJson::Object& result) {
-    const auto mem = system_info::parseMeminfo(readFile("/proc/meminfo").value_or(AString {}));
+    const auto mem = system_info::parseMeminfo(readFile("/proc/meminfo").valueOr(AString {}));
     if (mem.total > 0) {
         result["Memory"] = system_info::formatUsage(mem.total - std::min(mem.available, mem.total), mem.total);
     }
@@ -132,7 +132,7 @@ void addMemory(AJson::Object& result) {
 
 void addDisk(AJson::Object& result) {
     // composefs/overlay roots (immutable distros) are tiny and say nothing: list real filesystems
-    for (const auto& mount : system_info::parseMounts(readFile("/proc/mounts").value_or(AString {}))) {
+    for (const auto& mount : system_info::parseMounts(readFile("/proc/mounts").valueOr(AString {}))) {
         struct statvfs st {};
         if (statvfs(mount.mountPoint.toStdString().c_str(), &st) != 0 || st.f_blocks == 0) {
             continue;

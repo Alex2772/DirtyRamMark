@@ -8,26 +8,16 @@
 
 namespace {
 
-/// AString::trim() only strips spaces; /proc and /sys have tabs and newlines.
-AString trimAll(const AString& s) {
-    size_t begin = 0;
-    size_t end = s.length();
-    while (begin < end && (s[begin] == ' ' || s[begin] == '\t' || s[begin] == '\n' || s[begin] == '\r')) {
-        ++begin;
-    }
-    while (end > begin && (s[end - 1] == ' ' || s[end - 1] == '\t' || s[end - 1] == '\n' || s[end - 1] == '\r')) {
-        --end;
-    }
-    return s.substr(begin, end - begin);
-}
+/// Whitespace of /proc and /sys: AString::trim() with a single symbol would leave tabs and line breaks.
+constexpr AStringView WHITESPACE = " \t\r\n";
 
 /// Splits "key<sep>value" at the first separator; both parts are trimmed.
-std::optional<std::pair<AString, AString>> splitOnce(const AString& line, char separator) {
+AOptional<std::pair<AString, AString>> splitOnce(const AString& line, char separator) {
     const auto pos = line.find(separator);
     if (pos == AString::npos) {
         return std::nullopt;
     }
-    return std::make_pair(trimAll(line.substr(0, pos)), trimAll(line.substr(pos + 1)));
+    return std::make_pair(AString(line.substr(0, pos).trim(WHITESPACE)), AString(line.substr(pos + 1).trim(WHITESPACE)));
 }
 
 uint64_t parseUnsigned(const AString& s) {
@@ -49,7 +39,7 @@ uint64_t parseKilobytes(const AString& value) { return parseUnsigned(value) * 10
 AMap<AString, AString> system_info::parseOsRelease(const AString& osRelease) {
     AMap<AString, AString> result;
     for (const auto& rawLine : osRelease.replacedAll("\r", "").split('\n')) {
-        const auto line = trimAll(rawLine);
+        const AString line(rawLine.trim(WHITESPACE));
         if (line.empty() || line.startsWith('#')) {
             continue;
         }
@@ -145,11 +135,11 @@ system_info::MemInfo system_info::parseMeminfo(const AString& memInfo) {
     return result;
 }
 
-std::optional<system_info::PciName> system_info::lookupPci(const AString& pciIds, uint16_t vendor, uint16_t device) {
+AOptional<system_info::PciName> system_info::lookupPci(const AString& pciIds, uint16_t vendor, uint16_t device) {
     const auto vendorId = "{:04x}"_format(vendor);
     const auto deviceId = "{:04x}"_format(device);
 
-    std::optional<PciName> result;
+    AOptional<PciName> result;
     for (const auto& rawLine : pciIds.replacedAll("\r", "").split('\n')) {
         if (rawLine.empty() || rawLine.startsWith('#')) {
             continue;
@@ -173,8 +163,6 @@ std::optional<system_info::PciName> system_info::lookupPci(const AString& pciIds
     }
     return result;
 }
-
-AString system_info::trim(const AString& s) { return trimAll(s); }
 
 AVector<system_info::Mount> system_info::parseMounts(const AString& mounts) {
     static const std::set<AString> REAL = { "ext2", "ext3", "ext4", "btrfs", "xfs", "f2fs", "zfs", "vfat", "exfat",
@@ -269,7 +257,7 @@ AString system_info::formatUsage(uint64_t used, uint64_t total) {
 AString system_info::joinMeaningful(const AStringVector& parts) {
     AStringVector meaningful;
     for (const auto& p : parts) {
-        const auto trimmed = trimAll(p);
+        const AString trimmed(p.trim(WHITESPACE));
         if (!memory_info::isPlaceholder(trimmed) && trimmed != "System Product Name" &&
             trimmed != "System manufacturer" && trimmed != "Default string" && trimmed != "O.E.M.") {
             meaningful << trimmed;

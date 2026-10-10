@@ -1,6 +1,6 @@
 #pragma once
 
-#include <optional>
+#include <AUI/Common/AOptional.h>
 #include <AUI/Common/AStringVector.h>
 #include <AUI/Json/AJson.h>
 
@@ -17,4 +17,4 @@ AJson::Object collectReport();
  * @details
  * `--json` prints the report to stdout and nothing else (logs are redirected to stderr). `--help` prints usage.
  */
-std::optional<int> runCli(const AStringVector& args);
+AOptional<int> runCli(const AStringVector& args);

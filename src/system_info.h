@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <optional>
+#include <AUI/Common/AOptional.h>
 #include <AUI/Common/AMap.h>
 #include <AUI/Common/AString.h>
 #include <AUI/Common/AStringVector.h>
@@ -41,9 +41,6 @@ struct MemInfo {
 /// Contents of /proc/meminfo.
 MemInfo parseMeminfo(const AString& memInfo);
 
-/// Strips spaces, tabs and line breaks from both ends (AString::trim() only strips spaces).
-AString trim(const AString& s);
-
 struct Mount {
     AString device;
     AString mountPoint;
@@ -58,7 +55,7 @@ struct PciName {
     AString vendor;
     AString device;   ///< empty if the device is unknown
 };
-std::optional<PciName> lookupPci(const AString& pciIds, uint16_t vendor, uint16_t device);
+AOptional<PciName> lookupPci(const AString& pciIds, uint16_t vendor, uint16_t device);
 
 /// Vendor name as it is commonly written ("Advanced Micro Devices, Inc. [AMD/ATI]" -> "AMD").
 AString shortVendorName(const AString& vendor);

@@ -1,3 +1,4 @@
+#include <AUI/Common/AOptional.h>
 #include <cstring>
 
 #include <memory_info.h>
@@ -16,7 +17,7 @@ struct Structure {
     AVector<AString> strings;
 
     template<typename T>
-    std::optional<T> field(size_t offset) const {
+    AOptional<T> field(size_t offset) const {
         if (offset + sizeof(T) > length) {
             return std::nullopt;   // older SMBIOS versions have shorter structures
         }
@@ -26,7 +27,7 @@ struct Structure {
     }
 
     AString string(size_t offset) const {
-        auto index = field<uint8_t>(offset).value_or(0);
+        auto index = field<uint8_t>(offset).valueOr(0);
         return index >= 1 && index <= strings.size() ? strings[index - 1] : AString {};
     }
 };
@@ -54,9 +55,9 @@ AString memoryTypeName(uint8_t type) {
 
 void parseMemoryArray(const Structure& s, AMap<AString, AString>& out) {
     // Maximum Capacity is in KB; 0x80000000 means the Extended Maximum Capacity (bytes) is used instead.
-    uint64_t kilobytes = s.field<uint32_t>(0x07).value_or(0);
+    uint64_t kilobytes = s.field<uint32_t>(0x07).valueOr(0);
     if (kilobytes == 0x80000000ull) {
-        kilobytes = s.field<uint64_t>(0x0f).value_or(0) / 1024;
+        kilobytes = s.field<uint64_t>(0x0f).valueOr(0) / 1024;
     }
     if (kilobytes != 0) {
         out["Maximum Capacity"] = sizeText(kilobytes / 1024);
@@ -80,7 +81,7 @@ AMap<AString, AString> parseMemoryDevice(const Structure& s) {
             return {};
         }
         if (*size == 0x7fff) {
-            set("Size", sizeText(s.field<uint32_t>(0x1c).value_or(0) & 0x7fffffff));
+            set("Size", sizeText(s.field<uint32_t>(0x1c).valueOr(0) & 0x7fffffff));
         } else if (*size & 0x8000) {
             set("Size", "{} kB"_format(*size & 0x7fff));
         } else {
@@ -89,12 +90,12 @@ AMap<AString, AString> parseMemoryDevice(const Structure& s) {
     }
     set("Locator", s.string(0x10));
     set("Bank Locator", s.string(0x11));
-    set("Type", memoryTypeName(s.field<uint8_t>(0x12).value_or(0)));
+    set("Type", memoryTypeName(s.field<uint8_t>(0x12).valueOr(0)));
 
     // Speeds are in MT/s; 0xffff means the 32-bit extended field follows.
     auto speed = [&](size_t offset, size_t extendedOffset) -> uint32_t {
-        auto value = s.field<uint16_t>(offset).value_or(0);
-        return value == 0xffff ? s.field<uint32_t>(extendedOffset).value_or(0) & 0x7fffffff : value;
+        auto value = s.field<uint16_t>(offset).valueOr(0);
+        return value == 0xffff ? s.field<uint32_t>(extendedOffset).valueOr(0) & 0x7fffffff : value;
     };
     if (auto v = speed(0x15, 0x54)) {
         set("Speed", "{} MT/s"_format(v));

@@ -11,7 +11,7 @@
 
 namespace {
 
-std::optional<AString> registryString(HKEY root, const wchar_t* path, const wchar_t* name) {
+AOptional<AString> registryString(HKEY root, const wchar_t* path, const wchar_t* name) {
     DWORD size = 0;
     if (RegGetValueW(root, path, name, RRF_RT_REG_SZ, nullptr, nullptr, &size) != ERROR_SUCCESS || size == 0) {
         return std::nullopt;
@@ -24,7 +24,7 @@ std::optional<AString> registryString(HKEY root, const wchar_t* path, const wcha
     return AString(std::u16string_view(reinterpret_cast<const char16_t*>(value.data()), value.size()));
 }
 
-std::optional<DWORD> registryDword(HKEY root, const wchar_t* path, const wchar_t* name) {
+AOptional<DWORD> registryDword(HKEY root, const wchar_t* path, const wchar_t* name) {
     DWORD value = 0;
     DWORD size = sizeof(value);
     if (RegGetValueW(root, path, name, RRF_RT_REG_DWORD, nullptr, &value, &size) != ERROR_SUCCESS) {
@@ -34,7 +34,7 @@ std::optional<DWORD> registryDword(HKEY root, const wchar_t* path, const wchar_t
 }
 
 AString registryOrEmpty(const wchar_t* path, const wchar_t* name) {
-    return registryString(HKEY_LOCAL_MACHINE, path, name).value_or(AString {});
+    return registryString(HKEY_LOCAL_MACHINE, path, name).valueOr(AString {});
 }
 
 void addOs(AJson::Object& result) {

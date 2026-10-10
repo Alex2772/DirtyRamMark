@@ -175,10 +175,10 @@ TEST(MemoryTimingsIntel, MchbarBase) {
 }
 
 TEST(MemoryTimingsIntel, LayoutByModel) {
-    EXPECT_EQ(intelLayoutOf(6, 0xa5), IntelLayout::SKYLAKE);   // Comet Lake
-    EXPECT_EQ(intelLayoutOf(6, 0x9e), IntelLayout::SKYLAKE);   // Coffee Lake
-    EXPECT_EQ(intelLayoutOf(6, 0x97), IntelLayout::ALDER);     // Alder Lake S
-    EXPECT_EQ(intelLayoutOf(6, 0xb7), IntelLayout::ALDER);     // Raptor Lake S
+    EXPECT_TRUE(intelLayoutOf(6, 0xa5) == IntelLayout::SKYLAKE);   // Comet Lake
+    EXPECT_TRUE(intelLayoutOf(6, 0x9e) == IntelLayout::SKYLAKE);   // Coffee Lake
+    EXPECT_TRUE(intelLayoutOf(6, 0x97) == IntelLayout::ALDER);     // Alder Lake S
+    EXPECT_TRUE(intelLayoutOf(6, 0xb7) == IntelLayout::ALDER);     // Raptor Lake S
     EXPECT_FALSE(intelLayoutOf(6, 0xa7));                      // Rocket Lake: not verified
     EXPECT_FALSE(intelLayoutOf(6, 0xaa));                      // Meteor Lake: different layout
     EXPECT_FALSE(intelLayoutOf(23, 0x97));

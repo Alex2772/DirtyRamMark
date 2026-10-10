@@ -40,7 +40,7 @@ AJson::Object collectReport() {
     return report;
 }
 
-std::optional<int> runCli(const AStringVector& args) {
+AOptional<int> runCli(const AStringVector& args) {
     if (args.contains("--help") || args.contains("-h")) {
         std::cout << "Usage: dirty_ram_mark [--json]\n"
                      "  --json   print general system info, memory info and actual DRAM timings as JSON to stdout and exit (no GUI).\n"
