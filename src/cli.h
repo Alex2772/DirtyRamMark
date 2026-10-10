@@ -5,7 +5,7 @@
 #include <AUI/Json/AJson.h>
 
 /**
- * @brief Everything the app can tell about the memory, as one JSON object: {"version", "controller", "memory", "timings"}.
+ * @brief Everything the app can tell about the memory, as one JSON object: {"version", "general", "controller", "memory", "timings"}.
  * @details
  * A failing section is reported as {"error": "..."} instead of failing the whole report.
  */

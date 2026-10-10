@@ -1,0 +1,31 @@
+processor	: 0
+vendor_id	: AuthenticAMD
+cpu family	: 25
+model name	: AMD Ryzen 7 5800X 8-Core Processor
+cpu MHz		: 3792.345
+physical id	: 0
+siblings	: 4
+core id		: 0
+cpu cores	: 2
+
+processor	: 1
+vendor_id	: AuthenticAMD
+model name	: AMD Ryzen 7 5800X 8-Core Processor
+cpu MHz		: 4500.000
+physical id	: 0
+core id		: 0
+
+processor	: 2
+vendor_id	: AuthenticAMD
+model name	: AMD Ryzen 7 5800X 8-Core Processor
+cpu MHz		: 2200.000
+physical id	: 0
+core id		: 1
+
+processor	: 3
+vendor_id	: AuthenticAMD
+model name	: AMD Ryzen 7 5800X 8-Core Processor
+cpu MHz		: 2200.000
+physical id	: 0
+core id		: 1
+

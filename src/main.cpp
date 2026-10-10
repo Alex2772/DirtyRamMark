@@ -16,6 +16,7 @@
 #include "privileges.h"
 
 #include <memory_benchmark.h>
+#include "general_tab.h"
 #include <memory_info.h>
 #include <AUI/View/AScrollArea.h>
 #include <AUI/View/AButton.h>
@@ -114,6 +115,7 @@ AUI_ENTRY {
 
     auto window = _new<AWindow>("DirtyRamMark {}"_format(AUI_PP_STRINGIZE(AUI_CMAKE_PROJECT_VERSION)), 300_dp, 200_dp);
     auto tabs = _new<ATabView>() AUI_OVERRIDE_STYLE { Expanding {} };
+    tabs->addTab(ui::generalTab(), "General");
     tabs->addTab(ui::memoryBenchmark(), "Benchmark");
     tabs->addTab(
         privilegedTab([](const UpgradePrompt&) {

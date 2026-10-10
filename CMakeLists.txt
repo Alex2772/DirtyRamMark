@@ -27,6 +27,10 @@ aui_executable(${PROJECT_NAME})
 # Link required libs
 aui_link(${PROJECT_NAME} PRIVATE aui::core aui::views aui::json)
 
+if (WIN32)
+    target_link_libraries(${PROJECT_NAME} PRIVATE dxgi)
+endif ()
+
 # Compile assets
 aui_compile_assets(${PROJECT_NAME})
 
