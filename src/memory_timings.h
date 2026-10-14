@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <optional>
+#include <AUI/Common/AOptional.h>
 #include <AUI/Common/AMap.h>
 #include <AUI/Json/AJson.h>
 
@@ -60,7 +60,7 @@ enum class IntelLayout {
 };
 
 /// @return layout for the CPU or std::nullopt if the generation is not supported.
-std::optional<IntelLayout> intelLayoutOf(unsigned family, unsigned model);
+AOptional<IntelLayout> intelLayoutOf(unsigned family, unsigned model);
 
 /// Offsets (relative to MCHBAR) of the channels' register blocks.
 const AVector<uint32_t>& intelChannelBases(IntelLayout layout);

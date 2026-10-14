@@ -67,12 +67,12 @@ from scripts and AI workflows (coding agents, CI jobs, automated tuning loops):
 
 - Prints a single JSON object to **stdout** and exits: `{"version", "controller", "memory", "timings"}`. `controller` tells which memory controller the
   timings come from (`{"vendor": "AMD" | "Intel", "family", "model"}`), `memory` describes the
-  installed modules (from `dmidecode`), `timings` holds the actual DRAM timings programmed into the memory controller,
+  installed modules (from `dmidecode`), `general` holds the system overview (OS, CPU, GPU, memory, disks...), `timings` holds the actual DRAM timings programmed into the memory controller,
   with units (e.g. `"CAS Latency (CL)": "18 clocks"`).
 - A section that fails is reported as `{"error": "..."}` instead of failing the whole report.
 - Logs and diagnostics go to **stderr**, so stdout can be parsed as is.
-- Reading the real timings requires root; `pkexec` will ask for authorization, so an agent needs a session where it can
-  be approved. Real timings are supported on AMD Zen and on Intel Skylake..Comet Lake / Alder..Raptor Lake.
+- Reading the real timings requires root. The CLI never asks for authorization (no `pkexec` prompt): without root those
+  sections are `{"error": ...}`; run it as root (`sudo`) to get them. Real timings are supported on AMD Zen and on Intel Skylake..Comet Lake / Alder..Raptor Lake.
 - The GUI starts unprivileged and shows what it can; where it can't, a button "Upgrade privileges to obtain more info"
   appears (Linux: pkexec; Windows: restarts the app as administrator).
 - On Windows (`src/platform/win32`) the installed modules are read from the SMBIOS table. The actual timings need ring 0,

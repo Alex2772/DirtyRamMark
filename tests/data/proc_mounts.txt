@@ -1,0 +1,9 @@
+sysfs /sys sysfs rw,nosuid,nodev,noexec,relatime 0 0
+composefs / overlay ro,relatime 0 0
+/dev/nvme0n1p3 /var btrfs rw,relatime,subvolid=256,subvol=/root 0 0
+/dev/nvme0n1p3 /var/home btrfs rw,relatime,subvolid=257,subvol=/home 0 0
+/dev/nvme0n1p2 /boot ext4 rw,relatime 0 0
+/dev/nvme0n1p1 /boot/efi vfat rw,relatime 0 0
+/dev/sda1 /run/media/user/My\040Disk ntfs3 rw 0 0
+tmpfs /tmp tmpfs rw 0 0
+/dev/nvme0n1p3 /var/home/alex btrfs rw 0 0

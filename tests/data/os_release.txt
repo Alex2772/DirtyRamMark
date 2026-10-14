@@ -1,0 +1,12 @@
+# comment
+NAME="Fedora Linux"
+VERSION="44 (Workstation Edition)"
+RELEASE_TYPE=stable
+ID=fedora
+VERSION_ID=44
+PRETTY_NAME="Fedora Linux 44 (Workstation Edition)"
+HOME_URL="https://fedoraproject.org/"
+SINGLE='quoted value'
+EMPTY=
+
+not a key value line

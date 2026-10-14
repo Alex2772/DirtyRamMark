@@ -13,7 +13,7 @@ constexpr unsigned AMD_CHANNELS_TO_PROBE = 2;
 
 /// Reads SMN registers through the index/data pair of the root complex (00:00.0, config 0x60/0x64) with a single
 /// privileged setpci invocation, so the index/data sequence is not interleaved with anything of ours.
-std::optional<AVector<uint32_t>> readSmn(const AVector<uint32_t>& addresses) {
+AOptional<AVector<uint32_t>> readSmn(const AVector<uint32_t>& addresses) {
     AStringVector args = { "setpci", "-s", "00:00.0" };
     for (auto address : addresses) {
         args << "60.l={:x}"_format(address) << "64.l";

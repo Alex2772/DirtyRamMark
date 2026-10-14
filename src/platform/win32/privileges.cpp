@@ -20,8 +20,6 @@ bool privileges::isGranted() {
     return elevated;
 }
 
-void privileges::grant() {}
-
 void privileges::upgrade() {
     if (isGranted()) {
         return;

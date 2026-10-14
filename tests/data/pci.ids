@@ -1,0 +1,11 @@
+# List of PCI ID's
+#
+1002  Advanced Micro Devices, Inc. [AMD/ATI]
+	67df  Ellesmere [Radeon RX 470/480/570/570X/580/580X/590]
+		1002 0b04  Radeon RX 580
+	73bf  Navi 21 [Radeon RX 6800/6800 XT / 6900 XT]
+10de  NVIDIA Corporation
+	2484  GA104 [GeForce RTX 3070]
+	1234  Unnamed
+8086  Intel Corporation
+	9a49  TigerLake-LP GT2 [Iris Xe Graphics]

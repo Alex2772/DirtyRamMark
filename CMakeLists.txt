@@ -8,7 +8,7 @@ option(BUILD_SHARED_LIBS "Build shared libs" OFF)
 option(AUIB_FORCE_PRECOMPILED "AUI.Boot: force precompiled dependencies" OFF)
 option(AUIB_NO_PRECOMPILED "AUI.Boot: disable precompiled dependencies" OFF)
 
-set(AUI_VERSION v8.0.0-rc.32)
+set(AUI_VERSION v8.0.0-rc.33)
 
 # Use AUI.Boot
 include(aui.boot.cmake)
@@ -26,6 +26,10 @@ aui_executable(${PROJECT_NAME})
 
 # Link required libs
 aui_link(${PROJECT_NAME} PRIVATE aui::core aui::views aui::json)
+
+if (WIN32)
+    target_link_libraries(${PROJECT_NAME} PRIVATE dxgi)
+endif ()
 
 # Compile assets
 aui_compile_assets(${PROJECT_NAME})
