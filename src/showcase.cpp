@@ -149,7 +149,9 @@ _<AViewContainer> ui::showcase(AWindow& window) {
     AVector<_<AView>> memoryActions {
         action("Benchmark...", [&window] { openMemoryBenchmarkWindow(window); }),
         action("Banks...", [&window] { openMemoryBanksWindow(window); }),
+#if AUI_PLATFORM_LINUX
         action("Timings...", [&window] { openMemoryTimingsWindow(window); }),
+#endif
     };
     AJson::Object info;
     try {

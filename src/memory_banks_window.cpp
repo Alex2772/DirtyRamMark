@@ -37,5 +37,4 @@ void ui::openMemoryBanksWindow(AWindow& parent) {
       privilegedView([](const UpgradePrompt&) { return scrollable(generic_key_value_cloud::makeFlex(memoryInfo())); }),
     });
     window->show();
-    window->pack();
 }
