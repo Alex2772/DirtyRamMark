@@ -4,6 +4,7 @@
 #include <AUI/Util/UIBuildingHelpers.h>
 #include <AUI/Util/kAUI.h>
 #include <AUI/View/AScrollArea.h>
+#include <AUI/View/AText.h>
 
 #include "generic_key_value_cloud.h"
 #include "memory_timings.h"
@@ -34,8 +35,8 @@ _<AView> timingsContents(const ui::UpgradePrompt& prompt) {
         }
     } catch (const privileges::Required& e) {
         footer = prompt(e.getMessage());
-    } catch (const privileges::SettingRequired& e) {
-        footer = ui::settingPrompt(e);
+    } catch (const AException& e) {
+        footer = Centered { AText::fromString(e.getMessage()) };
     }
     auto grid = scrollable(generic_key_value_cloud::makeGrid(entries));
     if (!footer) {

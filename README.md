@@ -106,11 +106,9 @@ from scripts and AI workflows (coding agents, CI jobs, automated tuning loops):
 - Reading the real timings requires root. The CLI never asks for authorization (no `pkexec` prompt): without root those
   sections are `{"error": ...}`; run it as root (`sudo`) to get them. Real timings are supported on AMD Zen and on Intel Skylake..Comet Lake / Alder..Raptor Lake.
 - The GUI starts unprivileged and shows what it can; where it can't, a button "Upgrade privileges to obtain more info"
-  appears (Linux: pkexec; Windows: restarts the app as administrator).
-- On Windows (`src/platform/win32`) the installed modules are read from the SMBIOS table. The actual timings need ring 0,
-  so an elevated instance deploys a temporary kernel driver (`driver/dirtyrammark.c`, embedded as an asset:
-  `dirtyrammark.sys` built by the `dirtyrammark_driver` CMake target (`driver/make.bat`, WDK is found automatically or downloaded from NuGet; override with `-DWDK_ROOT=...`)) and removes it on exit. The driver is test-signed only: Windows loads
-  it with test signing on (`bcdedit /set testsigning on`, Secure Boot off, reboot). `--json` needs an administrator console.
+  appears (Linux: pkexec).
+- On Windows (`src/platform/win32`) the installed modules are read from the SMBIOS table. The actual timings are **not
+  supported**: they need ring 0, i.e. a signed kernel driver.
 - `./dirty_ram_mark --help` prints the usage. The benchmark itself is GUI-only for now.
 
 ## Building from Source

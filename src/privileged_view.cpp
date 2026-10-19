@@ -50,8 +50,6 @@ void fill(const _<AViewContainer>& holder, const Factory& factory) {
         holder->addView(factory(prompt));
     } catch (const privileges::Required& e) {
         holder->addView(prompt(e.getMessage()));
-    } catch (const privileges::SettingRequired& e) {
-        holder->addView(ui::settingPrompt(e));
     } catch (const AException& e) {
         ALogger::err("privileged_view") << "Failed: " << e;
         holder->addView(Centered { AText::fromString("Query failed: {}"_format(e.getMessage())) });
@@ -59,25 +57,6 @@ void fill(const _<AViewContainer>& holder, const Factory& factory) {
 }
 
 }   // namespace
-
-_<AView> ui::settingPrompt(const privileges::SettingRequired& e) {
-    return Centered {
-        Vertical {
-          AText::fromString(e.getMessage()),
-          Button {
-            .content = Label { e.buttonLabel() },
-            .onClick =
-                [fix = e.fix()] {
-                    try {
-                        fix();
-                    } catch (const AException& e) {
-                        ALogger::err("privileges") << "Failed: " << e;
-                    }
-                },
-          },
-        },
-    };
-}
 
 _<AView> ui::privilegedView(std::function<_<AView>(const UpgradePrompt&)> factory) {
     auto holder = _new<AViewContainer>();
