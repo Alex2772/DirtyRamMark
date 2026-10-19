@@ -125,3 +125,25 @@ TEST(SystemInfo, Mounts) {
     EXPECT_EQ(mounts[0].fileSystem, "btrfs");
     EXPECT_EQ(mounts[1].mountPoint, "/run/media/user/My Disk");
 }
+
+TEST(SystemInfo, MutterDisplays) {
+    auto d = parseMutterDisplays(readData("mutter_state.txt"));
+    ASSERT_EQ(d.size(), 3u);
+    // left to right
+    EXPECT_EQ(d[0].name, "27GN950");
+    EXPECT_EQ(d[0].width, 3840);
+    EXPECT_EQ(std::lround(d[0].refresh), 144);
+    EXPECT_FALSE(d[0].primary);
+    EXPECT_EQ(d[1].name, "LG ULTRAGEAR+");
+    EXPECT_EQ(std::lround(d[1].refresh), 240);
+    EXPECT_TRUE(d[1].primary);
+    EXPECT_EQ(d[2].name, "BenQ PD2700U");
+    EXPECT_EQ(d[2].inches, 27);
+    EXPECT_EQ(std::lround(d[2].refresh), 60);
+}
+
+TEST(SystemInfo, DiskBytes) {
+    EXPECT_EQ(formatDiskBytes(2'000'398'934'016ull), "2 TB");
+    EXPECT_EQ(formatDiskBytes(1'750'000'000'000ull), "1.75 TB");
+    EXPECT_EQ(formatDiskBytes(500'107'862'016ull), "500 GB");
+}

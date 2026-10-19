@@ -72,6 +72,27 @@ AString formatUptime(uint64_t seconds);
 /// "used / total (NN%)", e.g. "4.2 GiB / 15.6 GiB (27%)".
 AString formatUsage(uint64_t used, uint64_t total);
 
+/// "128 GB": total RAM rounded up to the nominal installed size.
+AString formatMemoryTotal(uint64_t total);
+
+struct Display {
+    AString connector;     ///< "DP-1"
+    AString name;          ///< "27GN950"
+    int x = 0;             ///< position in the logical layout
+    int width = 0;
+    int height = 0;
+    double refresh = 0;    ///< Hz
+    double inches = 0;     ///< 0 if unknown
+    bool primary = false;
+    bool builtin = false;
+};
+
+/// Output of `gdbus call ... org.gnome.Mutter.DisplayConfig.GetCurrentState`; sorted left to right.
+AVector<Display> parseMutterDisplays(const AString& state);
+
+/// Marketing (decimal) size of a disk: "1.75 TB", "500 GB".
+AString formatDiskBytes(uint64_t bytes);
+
 /// Joins the non-empty parts with a space (SMBIOS placeholders such as "To be filled by O.E.M." are dropped).
 AString joinMeaningful(const AStringVector& parts);
 

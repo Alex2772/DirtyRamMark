@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <set>
 #include <cmath>
+#include <regex>
 #include <range/v3/all.hpp>
 
 #include <memory_info.h>
@@ -252,6 +253,80 @@ AString system_info::formatUptime(uint64_t seconds) {
 AString system_info::formatUsage(uint64_t used, uint64_t total) {
     const auto percent = total == 0 ? 0 : int(std::lround(double(used) * 100.0 / double(total)));
     return "{} / {} ({}%)"_format(formatBytes(used), formatBytes(total), percent);
+}
+
+AString system_info::formatMemoryTotal(uint64_t total) {
+    constexpr double GIB = 1024.0 * 1024.0 * 1024.0;
+    // the kernel reports slightly less than the installed amount (firmware reservations): round up to a "marketing" size.
+    const double totalGb = double(total) / GIB;
+    const double step = std::max(1.0, std::exp2(std::floor(std::log2(totalGb)) - 3.0));
+    return "{} GB"_format(int(std::ceil(totalGb / step - 0.02) * step));
+}
+
+AString system_info::formatDiskBytes(uint64_t bytes) {
+    if (bytes >= 1'000'000'000'000ull) {
+        auto text = "{:.2f}"_format(double(bytes) / 1e12);
+        while (text.endsWith('0')) {
+            text = text.substr(0, text.length() - 1);
+        }
+        if (text.endsWith('.')) {
+            text = text.substr(0, text.length() - 1);
+        }
+        return text + " TB";
+    }
+    const auto gb = double(bytes) / 1e9;
+    return gb >= 10 ? "{} GB"_format(std::lround(gb)) : "{:.1f} GB"_format(gb);
+}
+
+AVector<system_info::Display> system_info::parseMutterDisplays(const AString& state) {
+    const std::string text = state.toStdString();
+    AVector<Display> result;
+
+    // monitors: (('DP-1', 'GSM', 'LG ULTRAGEAR+', 'serial'), [modes...], {properties})
+    static const std::regex HEADER(R"(\(\('([^']*)', '([^']*)', '([^']*)', '[^']*'\), \[\(')");
+    static const std::regex CURRENT(R"(\('\d+x\d+@[^']*', (\d+), (\d+), ([\d.]+), [^{}]*\{[^}]*'is-current')");
+    static const std::regex INCHES(R"(display-name': <'[^']*?(\d+)\\?"')");
+    std::vector<std::pair<size_t, std::smatch>> headers;
+    for (auto it = std::sregex_iterator(text.begin(), text.end(), HEADER); it != std::sregex_iterator(); ++it) {
+        headers.emplace_back(size_t(it->position()), *it);
+    }
+    const size_t layoutBegin = text.rfind("], [(");   // logical monitors follow the last monitor
+    for (size_t i = 0; i < headers.size(); ++i) {
+        const auto begin = headers[i].first;
+        const auto end = i + 1 < headers.size() ? headers[i + 1].first : text.size();
+        const std::string block = text.substr(begin, end - begin);
+        Display d;
+        d.connector = AString::fromUtf8(headers[i].second[1].str());
+        d.name = AString::fromUtf8(headers[i].second[3].str());
+        d.builtin = d.connector.startsWith("eDP") || d.connector.startsWith("LVDS") || d.connector.startsWith("DSI");
+        std::smatch m;
+        if (!std::regex_search(block, m, CURRENT)) {
+            continue;   // disabled output
+        }
+        d.width = std::stoi(m[1].str());
+        d.height = std::stoi(m[2].str());
+        d.refresh = std::stod(m[3].str());
+        if (std::regex_search(block, m, INCHES)) {
+            d.inches = std::stod(m[1].str());
+        }
+        result << std::move(d);
+    }
+
+    // logical monitors: (x, y, scale, transform, primary, [('DP-1', ...)], {})
+    static const std::regex LOGICAL(R"(\((-?\d+), -?\d+, [\d.]+, (?:uint32 )?\d+, (true|false), \[\('([^']*)')");
+    if (layoutBegin != std::string::npos) {
+        const auto tail = text.substr(layoutBegin);
+        for (auto it = std::sregex_iterator(tail.begin(), tail.end(), LOGICAL); it != std::sregex_iterator(); ++it) {
+            for (auto& d : result) {
+                if (d.connector.toStdString() == (*it)[3].str()) {
+                    d.x = std::stoi((*it)[1].str());
+                    d.primary = (*it)[2].str() == "true";
+                }
+            }
+        }
+    }
+    std::stable_sort(result.begin(), result.end(), [](const Display& a, const Display& b) { return a.x < b.x; });
+    return result;
 }
 
 AString system_info::joinMeaningful(const AStringVector& parts) {

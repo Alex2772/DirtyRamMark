@@ -15,7 +15,7 @@ include(aui.boot.cmake)
 
 # import AUI
 auib_import(aui https://github.com/aui-framework/aui
-        COMPONENTS core views curl json crypt
+        COMPONENTS core views curl json crypt remote_tools
         VERSION ${AUI_VERSION}
         CMAKE_ARGS -DAUI_COROUTINES=ON) # AUI disables coroutines on clang < 21 (Windows/macOS CI) by default
 
@@ -148,3 +148,9 @@ aui_app(TARGET ${PROJECT_NAME}
         VENDOR "AUI Project"
         ICON "assets/img/icon.svg"
 )
+
+# hotswap (hot code reload): debug builds on Linux only
+if (CMAKE_BUILD_TYPE STREQUAL "Debug" AND AUI_PLATFORM_LINUX)
+    aui_link(${PROJECT_NAME} PRIVATE aui::remote_tools)
+    aui_enable_hotswap(${PROJECT_NAME})
+endif()
