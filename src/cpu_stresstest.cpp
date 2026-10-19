@@ -7,6 +7,10 @@
 #include <sched.h>
 #elif defined(_WIN32)
 #include <windows.h>
+#if defined(_MSC_VER) && defined(_M_X64)
+#include <immintrin.h>
+#include <intrin.h>
+#endif
 #endif
 
 using namespace std::chrono;
@@ -71,6 +75,49 @@ Kernel pickKernel() {
     return __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma") ? chunkAvx2 : chunkBaseline;
 }
 const Kernel chunk = pickKernel();
+#elif defined(_MSC_VER) && defined(_M_X64)
+// MSVC has no vector_size extension: AVX2+FMA intrinsics, which it allows in any function without a global /arch flag.
+// 8 independent ymm accumulators cover the FMA latency (4 cycles x 2 ports).
+void chunkAvx2(float (&acc)[LANES]) {
+    const __m256 va = _mm256_set1_ps(factorA.load(std::memory_order_relaxed));
+    const __m256 vb = _mm256_set1_ps(factorB.load(std::memory_order_relaxed));
+    static_assert(LANES == 64);
+    __m256 v0 = _mm256_loadu_ps(acc + 0), v1 = _mm256_loadu_ps(acc + 8), v2 = _mm256_loadu_ps(acc + 16),
+           v3 = _mm256_loadu_ps(acc + 24), v4 = _mm256_loadu_ps(acc + 32), v5 = _mm256_loadu_ps(acc + 40),
+           v6 = _mm256_loadu_ps(acc + 48), v7 = _mm256_loadu_ps(acc + 56);
+    for (uint64_t i = 0; i < ITERATIONS; ++i) {
+        v0 = _mm256_fmadd_ps(v0, va, vb);
+        v1 = _mm256_fmadd_ps(v1, va, vb);
+        v2 = _mm256_fmadd_ps(v2, va, vb);
+        v3 = _mm256_fmadd_ps(v3, va, vb);
+        v4 = _mm256_fmadd_ps(v4, va, vb);
+        v5 = _mm256_fmadd_ps(v5, va, vb);
+        v6 = _mm256_fmadd_ps(v6, va, vb);
+        v7 = _mm256_fmadd_ps(v7, va, vb);
+    }
+    _mm256_storeu_ps(acc + 0, v0);
+    _mm256_storeu_ps(acc + 8, v1);
+    _mm256_storeu_ps(acc + 16, v2);
+    _mm256_storeu_ps(acc + 24, v3);
+    _mm256_storeu_ps(acc + 32, v4);
+    _mm256_storeu_ps(acc + 40, v5);
+    _mm256_storeu_ps(acc + 48, v6);
+    _mm256_storeu_ps(acc + 56, v7);
+}
+
+bool supportsAvx2Fma() {
+    int info[4];
+    __cpuid(info, 1);
+    const bool fma = info[2] & (1 << 12), osxsave = info[2] & (1 << 27), avx = info[2] & (1 << 28);
+    if (!fma || !osxsave || !avx || (_xgetbv(0) & 6) != 6) {   // the OS must save the ymm state
+        return false;
+    }
+    __cpuidex(info, 7, 0);
+    return info[1] & (1 << 5);
+}
+
+using Kernel = void (*)(float (&)[LANES]);
+const Kernel chunk = supportsAvx2Fma() ? chunkAvx2 : chunkBaseline;
 #else
 void chunk(float (&acc)[LANES]) { chunkBaseline(acc); }
 #endif

@@ -28,7 +28,7 @@ aui_executable(${PROJECT_NAME})
 aui_link(${PROJECT_NAME} PRIVATE aui::core aui::views aui::json)
 
 if (WIN32)
-    target_link_libraries(${PROJECT_NAME} PRIVATE dxgi dwmapi)
+    target_link_libraries(${PROJECT_NAME} PRIVATE dxgi dwmapi pdh powrprof ole32 oleaut32 wbemuuid)
 endif ()
 
 # CPU stress test: let the compiler fuse multiply-add into FMA where the target has it

@@ -430,7 +430,7 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
               } AUI_OVERRIDE_STYLE { LayoutSpacing { 2_dp } },
             },
           } AUI_OVERRIDE_STYLE { BackgroundSolid { COLOR_PANEL }, Border { 1_dp, COLOR_PANEL_BORDER }, BorderRadius { 10_dp }, Padding { 10_dp }, Expanding { 0, 1 }, LayoutSpacing { 12_dp } },
-        } AUI_OVERRIDE_STYLE { Expanding { 1, 1 }, LayoutSpacing { 16_dp } },
+        } AUI_OVERRIDE_STYLE { LayoutSpacing { 16_dp } },
       } AUI_OVERRIDE_STYLE { Expanding { 1, 1 }, LayoutSpacing { 16_dp } },
     } AUI_OVERRIDE_STYLE { BackgroundSolid { COLOR_WINDOW_BACKGROUND }, Padding { 16_dp }, LayoutSpacing { 8_dp } });
     window->show();

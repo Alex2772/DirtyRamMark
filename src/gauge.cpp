@@ -327,6 +327,7 @@ _<AView> declarative::Gauge::operator()() {
     maroonFrom.bindTo(view->maroonFrom.assignment());
     view AUI_OVERRIDE_STYLE {
         MinSize { hasMarkers ? 150_dp : 90_dp, hasMarkers ? 150_dp : 90_dp },
+        MaxSize { 256_dp },
         Expanding { 1, 1 },
     };
     return view;

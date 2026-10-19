@@ -18,6 +18,7 @@
 #include "cli.h"
 #include "showcase.h"
 #include "AUI/Util/Declarative/Containers.h"
+#include "window_border.h"
 
 using namespace ass;
 
