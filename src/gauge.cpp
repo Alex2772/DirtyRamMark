@@ -6,6 +6,7 @@
 #include <AUI/ASS/Property/Expanding.h>
 #include <AUI/ASS/Property/MinSize.h>
 #include <AUI/Font/AFontStyle.h>
+#include <AUI/Image/IDrawable.h>
 #include <AUI/Render/ABrush.h>
 #include <AUI/Render/ARenderContext.h>
 #include <AUI/Render/IRenderer.h>
@@ -22,10 +23,11 @@ namespace {
 // Angles are in degrees, clockwise from the top (12 o'clock), like AAngleRadians in IRenderer::squareSector.
 constexpr float DIAL_BEGIN = 225.f;   // bottom left
 constexpr float DIAL_SWEEP = 270.f;
+constexpr float SWEEP_SECONDS = 1.6f;   // duration of the needle test at startup
 
 constexpr AColor COLOR_FACE = 0x1a1c21_rgb;
 constexpr AColor COLOR_RIM = 0x3a3d45_rgb;
-constexpr AColor COLOR_TICK = 0xe6e6e6_rgb;
+const AColor COLOR_TICK = AColor(0xe6e6e6_rgb).transparentize(0.4f);
 constexpr AColor COLOR_GREEN = 0x2ecc71_rgb;
 constexpr AColor COLOR_YELLOW = 0xf1c40f_rgb;
 constexpr AColor COLOR_RED = 0xe74c3c_rgb;
@@ -50,6 +52,64 @@ void drawArc(ARenderContext& ctx, const AColor& color, glm::vec2 center, float r
                                 AAngleRadians(glm::radians(endDeg)));
     });
     ctx.render.roundedRectangleBorder(ASolidBrush { color }, position, size, radius, int(std::ceil(thickness)));
+}
+
+// assets/img/stresstest/bezel.png, see scripts/extract_stresstest_textures.py
+constexpr float BEZEL_TEXTURE_SIZE = 316.f;     // px
+constexpr float BEZEL_TEXTURE_OUTER_R = 156.f;  // px
+constexpr float BEZEL_FACE_RATIO = 146.f / BEZEL_TEXTURE_OUTER_R;   // face goes slightly under the bezel's inner edge
+
+/// Brushed-metal dial face filling the circle of the given radius.
+void drawBackdrop(ARenderContext& ctx, glm::vec2 center, float radius) {
+    static const _<IDrawable> backdrop = IDrawable::fromUrl(AUrl(":img/stresstest/backdrop.png"));
+    if (!backdrop) {
+        ctx.render.roundedRectangle(ASolidBrush { COLOR_FACE }, center - glm::vec2(radius), glm::vec2(radius * 2.f), radius);
+        return;
+    }
+    IDrawable::Params p;
+    p.offset = center - glm::vec2(radius);
+    p.size = glm::vec2(radius * 2.f);
+    backdrop->draw(ctx.render, p);
+}
+
+/// Draws the bezel ring so that its outer edge lies on the circle of the given radius.
+void drawBezel(ARenderContext& ctx, glm::vec2 center, float radius) {
+    static const _<IDrawable> bezel = IDrawable::fromUrl(AUrl(":img/stresstest/bezel.png"));
+    if (!bezel) {
+        // texture is missing: fall back to a plain rim
+        ctx.render.roundedRectangleBorder(ASolidBrush { COLOR_RIM }, center - glm::vec2(radius), glm::vec2(radius * 2.f), radius, 3);
+        return;
+    }
+    const float size = BEZEL_TEXTURE_SIZE * radius / BEZEL_TEXTURE_OUTER_R;
+    IDrawable::Params p;
+    p.offset = center - glm::vec2(size / 2.f);
+    p.size = glm::vec2(size);
+    bezel->draw(ctx.render, p);
+}
+
+// assets/img/stresstest/needle.png: points up, glow included; pivot and tip distance in px
+constexpr float NEEDLE_TEXTURE_W = 100.f;
+constexpr float NEEDLE_TEXTURE_H = 303.f;
+constexpr float NEEDLE_PIVOT_X = 50.f;
+constexpr float NEEDLE_PIVOT_Y = 249.f;
+constexpr float NEEDLE_TIP_DISTANCE = 227.f;
+
+/// Glowing needle with its hub, pointing at `clockDegrees`; its tip reaches `reach` from the center. False if the
+/// texture is missing.
+bool drawNeedle(ARenderContext& ctx, glm::vec2 center, float reach, float clockDegrees) {
+    static const _<IDrawable> needle = IDrawable::fromUrl(AUrl(":img/stresstest/needle.png"));
+    if (!needle) {
+        return false;
+    }
+    const float k = reach / NEEDLE_TIP_DISTANCE;
+    RenderHints::PushMatrix m(ctx.render);
+    ctx.render.translate(center);
+    ctx.render.rotate(AAngleRadians(glm::radians(clockDegrees)));
+    IDrawable::Params p;
+    p.offset = -glm::vec2(NEEDLE_PIVOT_X, NEEDLE_PIVOT_Y) * k;
+    p.size = glm::vec2(NEEDLE_TEXTURE_W, NEEDLE_TEXTURE_H) * k;
+    needle->draw(ctx.render, p);
+    return true;
 }
 
 class GaugeView : public AView {
@@ -88,15 +148,27 @@ public:
         const float hi = std::max(*max, lo + 1e-6f);
         const auto fraction = [&](float v) { return std::clamp((v - lo) / (hi - lo), 0.f, 1.f); };
 
-        // damped needle: it revs up, it doesn't teleport
+        // ignition test: right after the window shows up the needle sweeps to the end of the scale and back
+        if (!mStart) {
+            mStart = now;
+        }
+        const float elapsed = duration<float>(now - *mStart).count();
+        const bool sweeping = elapsed < SWEEP_SECONDS;
         const float target = fraction(*value);
-        mShown += (target - mShown) * (1.f - std::exp(-dt * 7.f));
-        const bool settled = std::abs(target - mShown) < 0.0005f;
+        if (sweeping) {
+            const float p = elapsed / SWEEP_SECONDS;
+            const float triangle = p < 0.5f ? p * 2.f : 2.f - p * 2.f;
+            mShown = triangle * triangle * (3.f - 2.f * triangle);   // smoothstep
+        } else {
+            // damped needle: it revs up, it doesn't teleport
+            mShown += (target - mShown) * (1.f - std::exp(-dt * 7.f));
+        }
+        const bool settled = !sweeping && std::abs(target - mShown) < 0.0005f;
         if (settled) {
             mShown = target;
         }
         // engine vibration: the harder the load, the more the needle trembles
-        const float shake = mShown > 0.05f
+        const float shake = !sweeping && mShown > 0.05f
             ? std::sin(duration<float>(now.time_since_epoch()).count() * 70.f) * 0.004f * mShown
             : 0.f;
 
@@ -107,10 +179,9 @@ public:
         const float ring = radius * 0.09f;
         const float scaleRadius = radius * 0.90f;   // arcs are drawn from the outer border, so see the outer radius
 
-        // face
-        ctx.render.roundedRectangle(ASolidBrush { COLOR_RIM }, center - glm::vec2(radius), glm::vec2(radius * 2.f), radius);
-        const float inner = radius - 3.f;
-        ctx.render.roundedRectangle(ASolidBrush { COLOR_FACE }, center - glm::vec2(inner), glm::vec2(inner * 2.f), inner);
+        // face: tucked under the metal bezel
+        const float inner = radius * BEZEL_FACE_RATIO;
+        drawBackdrop(ctx, center, inner);
 
         // colored zones
         struct Zone {
@@ -173,13 +244,15 @@ public:
 
         // needle
         const float angle = DIAL_BEGIN + std::clamp(mShown + shake, 0.f, 1.f) * DIAL_SWEEP;
-        ctx.render.line(ASolidBrush { COLOR_NEEDLE }, polar(center, -radius * 0.14f, angle), polar(center, radius * 0.80f, angle),
-                        ABorderStyle::Solid {}, AMetric(std::max(2.f, radius * 0.035f), AMetric::T_PX));
-        const float hub = radius * 0.08f;
-        ctx.render.roundedRectangle(ASolidBrush { COLOR_RIM }, center - glm::vec2(hub), glm::vec2(hub * 2.f), hub);
-        const float hubInner = hub * 0.55f;
-        ctx.render.roundedRectangle(ASolidBrush { COLOR_NEEDLE }, center - glm::vec2(hubInner), glm::vec2(hubInner * 2.f), hubInner);
-
+        if (!drawNeedle(ctx, center, radius * 0.80f, angle)) {
+            ctx.render.line(ASolidBrush { COLOR_NEEDLE }, polar(center, -radius * 0.14f, angle), polar(center, radius * 0.80f, angle),
+                            ABorderStyle::Solid {}, AMetric(std::max(2.f, radius * 0.035f), AMetric::T_PX));
+            const float hub = radius * 0.08f;
+            ctx.render.roundedRectangle(ASolidBrush { COLOR_RIM }, center - glm::vec2(hub), glm::vec2(hub * 2.f), hub);
+            const float hubInner = hub * 0.55f;
+            ctx.render.roundedRectangle(ASolidBrush { COLOR_NEEDLE }, center - glm::vec2(hubInner), glm::vec2(hubInner * 2.f), hubInner);
+        }
+        drawBezel(ctx, center, radius);
         if (!settled || shake != 0.f) {
             redraw();
         } else {
@@ -189,6 +262,7 @@ public:
 
 private:
     AOptional<steady_clock::time_point> mLastFrame;
+    AOptional<steady_clock::time_point> mStart;
     float mShown = 0.f;
 
     /// Reference points around the dial: a tick on the rim and a label, bright once the needle has passed it.

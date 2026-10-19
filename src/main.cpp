@@ -15,7 +15,6 @@
 #endif
 
 #include "background_blur.h"
-#include "window_border.h"
 #include "cli.h"
 #include "showcase.h"
 #include "AUI/Util/Declarative/Containers.h"
