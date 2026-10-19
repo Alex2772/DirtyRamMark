@@ -31,6 +31,13 @@ if (WIN32)
     target_link_libraries(${PROJECT_NAME} PRIVATE dxgi dwmapi)
 endif ()
 
+# CPU stress test: let the compiler fuse multiply-add into FMA where the target has it
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(${PROJECT_NAME} PRIVATE -ffp-contract=fast)
+elseif (MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE /fp:contract)
+endif ()
+
 # Linux-only: background blur on Wayland (ext-background-effect-v1 / org_kde_kwin_blur). Optional: needs libwayland-client
 # headers and wayland-scanner; without them the window simply stays opaque.
 if (UNIX AND NOT APPLE)

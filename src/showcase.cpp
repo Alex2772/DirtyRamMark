@@ -18,6 +18,7 @@
 #include "memory_benchmark.h"
 #include "showcase.h"
 #include "logo_strip.h"
+#include "cpu_stresstest_window.h"
 #include "memory_banks_window.h"
 #include "memory_timings_window.h"
 #include "system_info.h"
@@ -146,6 +147,9 @@ _<AViewContainer> ui::showcase(AWindow& window) {
             .onClick = std::move(onClick),
         };
     };
+    AVector<_<AView>> cpuActions {
+        action("Stress Test...", [&window] { openCpuStressTestWindow(window); }),
+    };
     AVector<_<AView>> memoryActions {
         action("Benchmark...", [&window] { openMemoryBenchmarkWindow(window); }),
         action("Banks...", [&window] { openMemoryBanksWindow(window); }),
@@ -165,8 +169,13 @@ _<AViewContainer> ui::showcase(AWindow& window) {
         sections << std::move(logos);
     }
     for (const auto& section : makeSections(info)) {
-        auto view = section.title == "Memory" ? sectionView(section, std::move(memoryActions)) : sectionView(section);
-        sections << std::move(view);
+        if (section.title == "CPU") {
+            sections << sectionView(section, std::move(cpuActions));
+        } else if (section.title == "Memory") {
+            sections << sectionView(section, std::move(memoryActions));
+        } else {
+            sections << sectionView(section);
+        }
     }
 
     return Vertical { std::move(sections) } AUI_OVERRIDE_STYLE {
