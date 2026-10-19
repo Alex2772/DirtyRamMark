@@ -8,7 +8,7 @@ option(BUILD_SHARED_LIBS "Build shared libs" OFF)
 option(AUIB_FORCE_PRECOMPILED "AUI.Boot: force precompiled dependencies" OFF)
 option(AUIB_NO_PRECOMPILED "AUI.Boot: disable precompiled dependencies" OFF)
 
-set(AUI_VERSION d2290fdfcc5cc5604917aff6504f6432e71ab7a4)
+set(AUI_VERSION eb8a3de7f7eecee66860e67cda7343ac5ffb1b6f)
 
 # Use AUI.Boot
 include(aui.boot.cmake)
