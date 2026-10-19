@@ -56,6 +56,38 @@
 - **Typical Pattern**: SEQ bandwidth > RND bandwidth due to cache effects
 - **Real-world Relevance**: Applications with good locality benefit from SEQ patterns, while random access patterns show memory subsystem limits
 
+## Background blur (Linux)
+
+On Linux (Wayland only) the window is translucent with a blurred background, **but only if the compositor really blurs
+it**. Otherwise the window stays opaque, so the text is always readable. X11 is not supported. The details of the
+decision are in the log (`/tmp/aui.<pid>.log`).
+
+| Desktop | What to do |
+|---|---|
+| **KDE Plasma** (KWin) | Nothing. Uses `org_kde_kwin_blur`. Make sure *System Settings → Window Management → Desktop Effects → Blur* is enabled. |
+| **Other compositors with `ext-background-effect-v1`** | Nothing, the protocol is used automatically when the compositor advertises the blur capability. |
+| **GNOME** (Mutter) | Mutter has no blur protocol, so use the [Blur My Shell](https://extensions.gnome.org/extension/3193/blur-my-shell/) extension (see below). |
+
+### GNOME: Blur My Shell
+
+1. Install and enable the **Blur My Shell** extension (`blur-my-shell@aunetx`).
+2. Open its settings → **Applications** and turn application blur on.
+3. Either enable **Blur all applications**, or add the app-id `ru.alex2772.dirtyrammark` to the **whitelist**
+   (the blur works by window class, so the app-id is what matters).
+   Command line equivalent:
+   ```bash
+   gsettings set org.gnome.shell.extensions.blur-my-shell.applications blur true
+   gsettings set org.gnome.shell.extensions.blur-my-shell.applications whitelist "['ru.alex2772.dirtyrammark']"
+   ```
+   (this replaces the whole list; append to the existing value if you already have other apps there). If the schema is
+   not installed system-wide, point `gsettings` at the extension's directory:
+   `GSETTINGS_SCHEMA_DIR=~/.local/share/gnome-shell/extensions/blur-my-shell@aunetx/schemas gsettings ...`
+4. Restart the app.
+
+DirtyRamMark reads these settings itself: if the app is in the whitelist (or *Blur all* is on and it isn't blacklisted),
+the window is made translucent; if the app is not covered, it stays opaque and the log tells you what to add. If the
+settings can't be read, it logs `Assuming user will add the app to Blur My Shell by themselves` and stays translucent.
+
 ## CLI mode (AI workflows)
 
 DirtyRamMark can run without a GUI and print everything it knows about the memory as JSON, which makes it easy to call

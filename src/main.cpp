@@ -14,9 +14,13 @@
 #include "memory_timings.h"
 #include "cli.h"
 #include "privileges.h"
+#include "background_blur.h"
 
 #include <memory_benchmark.h>
 #include "general_tab.h"
+#include "AUI/Platform/linux/APlatformAbstractionOptions.h"
+#include "AUI/View/ATitlebar.h"
+
 #include <memory_info.h>
 #include <AUI/View/AScrollArea.h>
 #include <AUI/View/AButton.h>
@@ -25,6 +29,8 @@
 #include <AUI/ASS/Property/Expanding.h>
 #include <functional>
 #include <AUI/View/AText.h>
+#include <AUI/View/ATitlebar.h>
+#include <AUI/ASS/AStylesheet.h>
 
 using namespace ass;
 using namespace declarative;
@@ -113,7 +119,24 @@ AUI_ENTRY {
         return *exitCode;
     }
 
-    auto window = _new<AWindow>("DirtyRamMark {}"_format(AUI_PP_STRINGIZE(AUI_CMAKE_PROJECT_VERSION)), 300_dp, 200_dp);
+#if AUI_PLATFORM_LINUX
+    APlatformAbstractionOptions::set({
+        .initializationOrder = {
+            APlatformAbstractionOptions::Adwaita1{},
+            APlatformAbstractionOptions::Gtk4{},
+            APlatformAbstractionOptions::X11{},
+        },
+    });
+#endif
+
+    auto window = _new<AWindow>(AWindow::Init {
+        .title = "DirtyRamMark {}"_format(AUI_PP_STRINGIZE(AUI_CMAKE_PROJECT_VERSION)),
+        .width = 300_dp,
+        .height = 200_dp,
+        .decoration = AWindow::Init::DecorationDefault {
+            .buttons = {.minimize = true, .maximize = false, .close = true, },
+        },
+    });
     auto tabs = _new<ATabView>() AUI_OVERRIDE_STYLE { Expanding {} };
     tabs->addTab(ui::generalTab(), "General");
     tabs->addTab(ui::memoryBenchmark(), "Benchmark");
@@ -143,9 +166,24 @@ AUI_ENTRY {
             return _<AView>(Vertical { grid, footer });
         }),
         "Timings");
-    window->setContents(Vertical { tabs });
+
+    window->setContents(Vertical {
+      tabs,
+    });
 
     window->show();
+
+#if AUI_PLATFORM_LINUX
+    // the window is translucent only if the compositor blurs it, otherwise the text would be hard to read
+    if (background_blur::enable(*window)) {
+        window AUI_OVERRIDE_STYLE { BackgroundSolid { AColor(0xf0f0f0_rgb).transparentize(0.35f) } };
+        // with the extended decoration the titlebar is drawn by AUI (the GTK one is hidden)
+        AStylesheet::global().addRule({
+            t<ATitlebar>(),
+            BackgroundSolid { AStylesheet::getOsThemeColor().transparentize(0.35f) },
+        });
+    }
+#endif
 
     return 0;
 };
