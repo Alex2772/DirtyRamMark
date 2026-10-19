@@ -13,11 +13,15 @@
 #include <AUI/ASS/Property/BorderRadius.h>
 #include <AUI/ASS/Property/Border.h>
 #include <AUI/ASS/Property/BoxShadow.h>
+#include <AUI/ASS/Property/FontSize.h>
 
 #include "memory_benchmark.h"
 #include "showcase.h"
-#include "tool_windows.h"
+#include "logo_strip.h"
+#include "memory_banks_window.h"
+#include "memory_timings_window.h"
 #include "system_info.h"
+#include "AUI/View/ASpacerFixed.h"
 
 using namespace ass;
 using namespace declarative;
@@ -125,27 +129,27 @@ _<AView> sectionView(const Section& section, AVector<_<AView>> actions = {}) {
                 ATextAlign::RIGHT,
             },
             AText::fromString(text) AUI_LET { it->setExpanding(); },
-        } AUI_OVERRIDE_STYLE { LayoutSpacing { 14_dp } });
+        } AUI_OVERRIDE_STYLE { LayoutSpacing { 12_dp } });
     }
     if (!actions.empty()) {
         rows << (Horizontal { std::move(actions) } AUI_OVERRIDE_STYLE { LayoutSpacing { 6_dp }, Margin { 3_dp, 0, 0, 114_dp } });
     }
-    return Vertical { std::move(rows) } AUI_OVERRIDE_STYLE { LayoutSpacing { 8_dp } };
+    return Vertical { std::move(rows) } AUI_OVERRIDE_STYLE { LayoutSpacing { 2_dp } };
 }
 
 }   // namespace
 
 _<AViewContainer> ui::showcase(AWindow& window) {
-    const auto tool = [&window](const AString& title, std::function<_<AView>()> contents) -> _<AView> {
+    const auto action = [](const AString& title, std::function<void()> onClick) -> _<AView> {
         return FlatButton {
             .content = Label { title },
-            .onClick = [&window, title, contents = std::move(contents)] { openToolWindow(window, title, contents); },
+            .onClick = std::move(onClick),
         };
     };
     AVector<_<AView>> memoryActions {
-        tool("Benchmark...", [] { return memoryBenchmark(); }),
-        tool("Banks...", [] { return banksView(); }),
-        tool("Timings...", [] { return timingsView(); }),
+        action("Benchmark...", [&window] { openMemoryBenchmarkWindow(window); }),
+        action("Banks...", [&window] { openMemoryBanksWindow(window); }),
+        action("Timings...", [&window] { openMemoryTimingsWindow(window); }),
     };
     AJson::Object info;
     try {
@@ -155,14 +159,16 @@ _<AViewContainer> ui::showcase(AWindow& window) {
         return Centered { AText::fromString("Query failed: {}"_format(e.getMessage())) };
     }
     AVector<_<AView>> sections;
+    if (auto logos = ui::logoStrip(info)) {
+        sections << std::move(logos);
+    }
     for (const auto& section : makeSections(info)) {
         auto view = section.title == "Memory" ? sectionView(section, std::move(memoryActions)) : sectionView(section);
-        if (!sections.empty()) {
-            view AUI_OVERRIDE_STYLE { Margin { 18_dp, 0, 0, 0 } };
-        }
         sections << std::move(view);
     }
+
     return Vertical { std::move(sections) } AUI_OVERRIDE_STYLE {
-        Padding { 24_dp, 22_dp },
+        Padding { 16_dp, 24_dp },
+        LayoutSpacing { 16_dp },
     };
 }

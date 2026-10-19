@@ -7,6 +7,7 @@
 #include <AUI/Thread/AAsyncHolder.h>
 #include <AUI/Thread/AFuture.h>
 #include <AUI/Traits/values.h>
+#include <AUI/Platform/AWindow.h>
 #include <AUI/View/AView.h>
 #include <AUI/Reflect/AEnumerate.h>
 
@@ -42,6 +43,9 @@ namespace ui {
     };
 
     _<AView> memoryBenchmark();
+
+    /// "Memory Benchmark" window.
+    void openMemoryBenchmarkWindow(AWindow& parent);
 
     /// Runs SEQ and RND read/write tests, filling `state->tests`. Must be called from the main thread.
     AFuture<> runAllTests(_<State> state);

@@ -6,6 +6,7 @@
 #include "product_image.h"
 
 #include <AUI/ASS/Property/MinSize.h>
+#include <AUI/ASS/Property/MaxSize.h>
 #include <AUI/View/AText.h>
 #include <AUI/View/AButton.h>
 #include <AUI/View/ATextField.h>
@@ -75,12 +76,19 @@ static _<AView> impl(const AJson::Array& v, const RenderFlags& flags) {
 static _<AView> impl(const AJson::Object& entries, const RenderFlags& flags) {
     auto generator = ranges::views::transform(entries, [&](const std::pair<AString, AJson>& e) -> _<AView> {
             if (e.second.isObject()) {
-                return GroupBox {
+                auto box = _<AView>(GroupBox {
                     Label { e.first },
                     dispatch(e.second, flags),
-                } AUI_OVERRIDE_STYLE {
-                    MinSize { 420_dp, {} },
-                };
+                });
+                if (flags.container == RenderFlags::Container::FLEXBOX) {
+                    // AText sizes embedded views by their max width (AViewEntry::getSize) and takes the widest of them as
+                    // its own min width. a nested flexbox is as wide as all of its entries in a single row, which makes
+                    // the outer one unwrappable (horizontal scroll, one-row height) unless we bound it.
+                    box->setCustomStyle({ MinSize { 420_dp, {} }, MaxSize { 500_dp, {} } });
+                } else {
+                    box->setCustomStyle({ MinSize { 420_dp, {} } });
+                }
+                return box;
             }
             return Horizontal {
                 Label { e.first } AUI_OVERRIDE_STYLE {
@@ -115,6 +123,7 @@ static _<AView> impl(const AJson::Object& entries, const RenderFlags& flags) {
         LineHeight { 1.f },
         ATextAlign::JUSTIFY,
         MinSize { 380_dp, {} },
+        Expanding { 1, 0 },
     });
 
     AVector<AArc<AView>> header;
@@ -147,6 +156,8 @@ static _<AView> dispatch(const AJson& entry, const RenderFlags& flags) {
 }
 
 static _<AView> copyableJson(_<AView> contents, const AJson::Object& entries) {
+    // AText needs a defined width to word-wrap, otherwise it demands a single-row minimum width.
+    contents->setExpanding();
     return Vertical::Expanding {
         std::move(contents),
         Button {

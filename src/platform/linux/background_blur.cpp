@@ -125,8 +125,8 @@ void makeGtkWindowTransparent(void* display, void* gtkWindow) {
         "window.background { background: transparent; }"
         // libadwaita (AdwToolbarView) paints the top bar on several nested nodes, so the translucent layer is drawn
         // once by the revealer that holds the bar; everything inside is transparent (otherwise layers would add up)
-        "toolbarview > revealer { background-color: alpha(@headerbar_bg_color, 0.6); }"
-        "toolbarview > revealer:backdrop { background-color: alpha(@headerbar_backdrop_color, 0.6); }"
+        "toolbarview > revealer { background-color: alpha(@headerbar_bg_color, 0.5); }"
+        "toolbarview > revealer:backdrop { background-color: alpha(@headerbar_backdrop_color, 0.5); }"
         "toolbarview > revealer > *, toolbarview > revealer headerbar, toolbarview > revealer windowhandle {"
         "  background: transparent; box-shadow: none; }"
         // on a translucent bar the title looks too heavy

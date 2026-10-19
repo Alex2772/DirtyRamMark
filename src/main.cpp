@@ -15,6 +15,7 @@
 #include "background_blur.h"
 #include "cli.h"
 #include "showcase.h"
+#include "AUI/Util/Declarative/Containers.h"
 
 using namespace ass;
 
@@ -45,26 +46,15 @@ AUI_ENTRY {
 
 
 
-    window->setContents(ui::showcase(*window));
-
-#if __has_include(<AUI/Remote/AHotCodeReload.h>)
-    // hotswap: re-inflate the contents after the object files were patched
-    AObject::connect(AHotCodeReload::inst().patchEnd, window, [&window = *window] {
-        window.setContents(ui::showcase(window));
-    });
-#endif
+    window->setContents(declarative::Centered { ui::showcase(*window) } AUI_OVERRIDE_STYLE { Padding(0) });
 
     window->show();
 
 #if AUI_PLATFORM_LINUX
     // the window is translucent only if the compositor blurs it, otherwise the text would be hard to read
     if (background_blur::enable(*window)) {
-        window AUI_OVERRIDE_STYLE { BackgroundSolid { AColor(0xf0f0f0_rgb).transparentize(0.35f) } };
+        window AUI_OVERRIDE_STYLE { BackgroundSolid { AColor(0xf0f0f0_rgb).transparentize(0.5f) } };
         // with the extended decoration the titlebar is drawn by AUI (the GTK one is hidden)
-        AStylesheet::global().addRule({
-            t<ATitlebar>(),
-            BackgroundSolid { AStylesheet::getOsThemeColor().transparentize(0.35f) },
-        });
         AStylesheet::global().addRule({
             t<AView>(),
             FontRendering::ANTIALIASING,
