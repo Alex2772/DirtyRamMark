@@ -28,7 +28,7 @@ aui_executable(${PROJECT_NAME})
 aui_link(${PROJECT_NAME} PRIVATE aui::core aui::views aui::json)
 
 if (WIN32)
-    target_link_libraries(${PROJECT_NAME} PRIVATE dxgi)
+    target_link_libraries(${PROJECT_NAME} PRIVATE dxgi dwmapi)
 endif ()
 
 # Linux-only: background blur on Wayland (ext-background-effect-v1 / org_kde_kwin_blur). Optional: needs libwayland-client
