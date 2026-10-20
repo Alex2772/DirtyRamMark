@@ -623,11 +623,14 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
       if (cpuFrequencyGHz()) {
           addSeries(state->frequency, { 0x2f7fd9_rgb, "GHz", 0.f, FREQUENCY_MAX_GHZ }, true, [](float v) { return "{:.2f} GHz"_format(v); });
       }
+      const bool hasCoolant = coolantTemperatureCelsius().hasValue();
       if (cpuTemperatureCelsius()) {
-          addSeries(state->temperature, { 0xd93a2f_rgb, "\u00b0C", 10.f, 110.f }, true,
-                    [](float v) { return "{:.0f}\u00b0C"_format(v); });
+          const auto formatter = hasCoolant
+            ? [](float v) { return "{:.0f}\u00b0C"_format(v); }
+            : [](float v) { return "{:.0f}\u00b0C CPU"_format(v); };
+          addSeries(state->temperature, { 0xd93a2f_rgb, "\u00b0C", 10.f, 110.f }, true, formatter);
       }
-      if (coolantTemperatureCelsius()) {
+      if (hasCoolant) {
           addSeries(state->coolant, { 0x2fb8d9_rgb, "\u00b0C liquid", 0.f, COOLANT_MAX_CELSIUS }, true,
                     [](float v) { return "{:.1f}\u00b0C liquid"_format(v); });
       }
