@@ -57,7 +57,10 @@ constexpr float COREMARK_K_PER_THREAD = 50.f;
 
 constexpr float TFLOPS_MAX = 4.f;   // fits a 64-core Threadripper (see referenceCpus())
 constexpr float FREQUENCY_MAX_GHZ = 6.f;
-constexpr float COOLANT_MAX_CELSIUS = 60.f;
+constexpr float COOLANT_MAX_CELSIUS = 60.f;   // gauge only
+// shared by the CPU and coolant plot axes: same unit, so the same scale
+constexpr float TEMPERATURE_MIN_CELSIUS = 10.f;
+constexpr float TEMPERATURE_MAX_CELSIUS = 110.f;
 constexpr float POWER_MAX_WATTS = 300.f;   // package power, up to a Threadripper's TDP
 constexpr std::chrono::seconds PLOT_SPAN = 3min;
 
@@ -625,13 +628,11 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
       }
       const bool hasCoolant = coolantTemperatureCelsius().hasValue();
       if (cpuTemperatureCelsius()) {
-          const auto formatter = hasCoolant
-            ? [](float v) { return "{:.0f}\u00b0C"_format(v); }
-            : [](float v) { return "{:.0f}\u00b0C CPU"_format(v); };
-          addSeries(state->temperature, { 0xd93a2f_rgb, "\u00b0C", 10.f, 110.f }, true, formatter);
+          addSeries(state->temperature, { 0xd93a2f_rgb, hasCoolant ? "\u00b0C CPU" : "\u00b0C", TEMPERATURE_MIN_CELSIUS, TEMPERATURE_MAX_CELSIUS }, true,
+                    [hasCoolant](float v) { return hasCoolant ? "{:.0f}\u00b0C CPU"_format(v) : "{:.0f}\u00b0C"_format(v); });
       }
       if (hasCoolant) {
-          addSeries(state->coolant, { 0x2fb8d9_rgb, "\u00b0C liquid", 0.f, COOLANT_MAX_CELSIUS }, true,
+          addSeries(state->coolant, { 0x2fb8d9_rgb, "\u00b0C liquid", TEMPERATURE_MIN_CELSIUS, TEMPERATURE_MAX_CELSIUS }, true,
                     [](float v) { return "{:.1f}\u00b0C liquid"_format(v); });
       }
       if (cpuPowerWatts()) {
