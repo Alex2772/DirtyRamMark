@@ -2,6 +2,10 @@
 
 #include <algorithm>
 
+extern "C" {
+#include <coremark_kernel.h>
+}
+
 #if defined(__linux__)
 #include <pthread.h>
 #include <sched.h>
@@ -174,16 +178,29 @@ void ui::CpuStressTest::setCoreEnabled(unsigned core, bool enabled) {
 
 void ui::CpuStressTest::setLoad(float load) { mLoad = std::clamp(load, 0.f, 1.f); }
 
-double ui::CpuStressTest::sampleTflops() {
-    uint64_t total = 0;
+uint64_t ui::CpuStressTest::total(Workload workload) const {
+    uint64_t result = 0;
     for (const auto& worker : mWorkers) {
-        total += worker->flops.load(std::memory_order_relaxed);
+        result += worker->done[size_t(workload)].load(std::memory_order_relaxed);
     }
+    return result;
+}
+
+void ui::CpuStressTest::setWorkload(Workload workload) {
+    const auto index = size_t(workload);
+    mLastDone[index] = total(workload);
+    mLastSample[index] = steady_clock::now();
+    mWorkload = workload;
+}
+
+double ui::CpuStressTest::sampleRate() {
+    const auto index = size_t(mWorkload.load());
+    const auto done = total(Workload(index));
     const auto now = steady_clock::now();
-    const double seconds = duration<double>(now - mLastSample).count();
-    const double result = seconds > 0 ? double(total - mLastFlops) / seconds / 1e12 : 0.0;
-    mLastFlops = total;
-    mLastSample = now;
+    const double seconds = duration<double>(now - mLastSample[index]).count();
+    const double result = seconds > 0 ? double(done - mLastDone[index]) / seconds : 0.0;
+    mLastDone[index] = done;
+    mLastSample[index] = now;
     return result;
 }
 
@@ -193,18 +210,29 @@ void ui::CpuStressTest::run(size_t index) {
     for (size_t i = 0; i < LANES; ++i) {
         acc[i] = float(i) * 0.01f;
     }
-    auto& flops = mWorkers[index]->flops;
+    struct CoreMarkDeleter {
+        void operator()(coremark_context* c) const { coremark_destroy(c); }
+    };
+    std::unique_ptr<coremark_context, CoreMarkDeleter> coreMark(coremark_create());
+    auto& fp32Done = mWorkers[index]->done[size_t(Workload::Fp32)];
+    auto& coreMarkDone = mWorkers[index]->done[size_t(Workload::CoreMark)];
     while (!mStop) {
         const float load = mLoad;
         if (!mWorkers[index]->enabled || load <= 0.f) {
             std::this_thread::sleep_for(10ms);
             continue;
         }
+        const auto workload = mWorkload.load();
         const auto begin = steady_clock::now();
         const auto busyUntil = begin + duration_cast<steady_clock::duration>(PERIOD * double(load));
         while (steady_clock::now() < busyUntil) {
-            chunk(acc);
-            flops.store(flops.load(std::memory_order_relaxed) + FLOP_PER_CHUNK, std::memory_order_relaxed);
+            if (workload == Workload::CoreMark && coreMark) {
+                coremark_run(coreMark.get(), 1);   // ~tens of microseconds
+                coreMarkDone.store(coreMarkDone.load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
+            } else {
+                chunk(acc);
+                fp32Done.store(fp32Done.load(std::memory_order_relaxed) + FLOP_PER_CHUNK, std::memory_order_relaxed);
+            }
         }
         if (const auto rest = begin + PERIOD - steady_clock::now(); rest > 0ms && load < 1.f) {
             std::this_thread::sleep_for(rest);

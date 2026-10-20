@@ -146,7 +146,10 @@ public:
 
         const float lo = *min;
         const float hi = std::max(*max, lo + 1e-6f);
-        const auto fraction = [&](float v) { return std::clamp((v - lo) / (hi - lo), 0.f, 1.f); };
+        // the needle and the readout are not limited by the scale: it may go past the end of the dial
+        const auto unclampedFraction = [&](float v) { return (v - lo) / (hi - lo); };
+        // the static parts of the dial (zones, markers) stay on the scale
+        const auto fraction = [&](float v) { return std::clamp(unclampedFraction(v), 0.f, 1.f); };
 
         // ignition test: right after the window shows up the needle sweeps to the end of the scale and back
         if (!mStart) {
@@ -154,7 +157,7 @@ public:
         }
         const float elapsed = duration<float>(now - *mStart).count();
         const bool sweeping = elapsed < SWEEP_SECONDS;
-        const float target = fraction(*value);
+        const float target = unclampedFraction(*value);
         if (sweeping) {
             const float p = elapsed / SWEEP_SECONDS;
             const float triangle = p < 0.5f ? p * 2.f : 2.f - p * 2.f;
@@ -174,7 +177,7 @@ public:
 
         const float size = float(std::min(getWidth(), getHeight()));
         // markers are drawn outside of the dial: leave some room for them
-        const float radius = markers.empty() ? size / 2.f - 2.f : size * 0.5f * 0.74f;
+        const float radius = markers.empty() ? size / 2.f - 2.f : size * 0.5f * 0.64f;
         const glm::vec2 center = glm::vec2(getSize()) / 2.f;
         const float ring = radius * 0.09f;
         const float scaleRadius = radius * 0.90f;   // arcs are drawn from the outer border, so see the outer radius
@@ -243,7 +246,7 @@ public:
         centeredText(ctx, unit, center + glm::vec2(0.f, radius * 0.68f), unitStyle, COLOR_TICK.transparentize(0.4f));
 
         // needle
-        const float angle = DIAL_BEGIN + std::clamp(mShown + shake, 0.f, 1.f) * DIAL_SWEEP;
+        const float angle = DIAL_BEGIN + (mShown + shake) * DIAL_SWEEP;
         if (!drawNeedle(ctx, center, radius * 0.80f, angle)) {
             ctx.render.line(ASolidBrush { COLOR_NEEDLE }, polar(center, -radius * 0.14f, angle), polar(center, radius * 0.80f, angle),
                             ABorderStyle::Solid {}, AMetric(std::max(2.f, radius * 0.035f), AMetric::T_PX));
@@ -326,9 +329,9 @@ _<AView> declarative::Gauge::operator()() {
     redFrom.bindTo(view->redFrom.assignment());
     maroonFrom.bindTo(view->maroonFrom.assignment());
     view AUI_OVERRIDE_STYLE {
-        MinSize { hasMarkers ? 150_dp : 90_dp, hasMarkers ? 150_dp : 90_dp },
-        MaxSize { 256_dp },
-        Expanding { 1, 1 },
+        MinSize { hasMarkers ? 350_dp : 200_dp, hasMarkers ? 300_dp : 200_dp },
+        MaxSize { hasMarkers ? 400_dp : 300_dp, 300_dp },
+        Expanding {1, 1},
     };
-    return view;
+    return Centered { view };
 }

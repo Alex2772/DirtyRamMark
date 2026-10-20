@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cmath>
+#include <deque>
 #include <AUI/ASS/Property/Expanding.h>
 #include <AUI/ASS/Property/BackgroundImage.h>
 #include <AUI/ASS/Property/BackgroundSolid.h>
@@ -7,22 +8,29 @@
 #include <AUI/ASS/Property/BorderRadius.h>
 #include <AUI/ASS/Property/FixedSize.h>
 #include <AUI/ASS/Property/FontSize.h>
+#include <AUI/ASS/Property/MinSize.h>
 #include <AUI/ASS/Property/Padding.h>
 #include <AUI/ASS/Property/TextColor.h>
 #include <AUI/Common/ATimer.h>
 #include <AUI/Platform/AWindow.h>
+#include <AUI/Render/ABrush.h>
 #include <AUI/Render/ARenderContext.h>
+#include <AUI/Render/IRenderer.h>
 #include <AUI/Render/RenderHints.h>
 #include <AUI/Util/UIBuildingHelpers.h>
 #include <AUI/Util/kAUI.h>
 #include <AUI/View/AForEachUI.h>
 #include <range/v3/view/iota.hpp>
 #include <range/v3/view/reverse.hpp>
+#include <AUI/Layout/AStackedLayout.h>
+#include <AUI/Model/AListModel.h>
 #include <AUI/View/ACheckBox.h>
+#include <AUI/View/ADropdownList.h>
 #include <AUI/View/AViewContainer.h>
 #include <AUI/View/ASlider.h>
 
 #include "gauge.h"
+#include "plot.h"
 #include "cpu_frequency.h"
 #include "cpu_stresstest.h"
 #include "cpu_stresstest_window.h"
@@ -35,25 +43,81 @@ using namespace std::chrono_literals;
 
 namespace {
 
-constexpr float TFLOPS_MAX = 3.f;
+/// Workloads in the order of the dropdown.
+constexpr ui::CpuStressTest::Workload WORKLOADS[] = {
+    ui::CpuStressTest::Workload::CoreMark,
+    ui::CpuStressTest::Workload::Fp32,
+};
+constexpr int WORKLOAD_COUNT = int(std::size(WORKLOADS));
+
+/// CoreMark per logical processor, thousands of iterations/s, of a fast modern core (~50k at 5 GHz): sizes the gauge so it
+/// ends a bit above what this machine can show. Other cores (and the other half of SMT) are slower.
+constexpr float COREMARK_K_PER_THREAD = 50.f;
+
+constexpr float TFLOPS_MAX = 4.f;   // fits a 64-core Threadripper (see referenceCpus())
 constexpr float FREQUENCY_MAX_GHZ = 6.f;
+constexpr std::chrono::seconds PLOT_SPAN = 3min;
 
 /// Reference points for the TFLOPS gauge: theoretical peak of fp32 FMA (AVX2/NEON), all cores at a typical sustained
 /// clock: cores x GHz x FLOP per cycle per core (32 for 2x256-bit FMA or an Apple P-core with 4x128-bit NEON FMA, 16
 /// for a Gracemont/Apple E-core or 2x128-bit NEON). There is no authoritative table of these; they are computed, so
 /// treat them as ballpark.
-AVector<Gauge::Marker> referenceCpus() {
+AVector<Gauge::Marker> referenceFp32Cpus() {
     return {
-        { 0.15f, "RPi 5" },            // 4 x 2.4 GHz x 16
+        { 0.15f, "Raspberry Pi 5" },   // 4 x 2.4 GHz x 16
         { 0.55f, "Apple M1" },         // 4 P x 3.2 x 32 + 4 E x 2.1 x 16
         { 0.8f, "i5-12400" },          // 6 x 4.0 x 32
         { 1.0f, "Apple M3 Pro" },      // 6 P x 4.05 x 32 + 6 E x 2.75 x 16
         { 1.2f, "Ryzen 7 7800X3D" },   // 8 x 4.7 x 32
         { 1.4f, "i7-12700K" },         // 8 P x 4.7 x 32 + 4 E x 3.6 x 16
-        { 1.7f, "Apple M3 Max" },      // 12 P x 4.05 x 32 + 4 E x 2.75 x 16
+        { 1.6f, "Apple M3 Max" },      // 12 P x 4.05 x 32 + 4 E x 2.75 x 16
         { 2.0f, "Ryzen 9 5950X" },     // 16 x 3.9 x 32 (measured by others: ~2.1)
         { 2.5f, "Ryzen 9 7950X" },     // 16 x 4.9 x 32
+        // Threadrippers are power-limited under a full AVX2 load: the all-core clock is well below the boost one
+        { 4.3f, "TR 7970X" },          // 32 x 4.2 x 32
     };
+}
+
+/// Rounds up to 1, 2, 5 x 10^n.
+float niceCeil(float value) {
+    const float decade = std::pow(10.f, std::floor(std::log10(std::max(value, 1.f))));
+    for (const float k : { 1.f, 2.f, 5.f, 10.f }) {
+        if (value <= k * decade) {
+            return k * decade;
+        }
+    }
+    return 10.f * decade;
+}
+
+float coreMarkMaxK() { return niceCeil(COREMARK_K_PER_THREAD * float(ui::CpuStressTest::maxThreads())); }
+
+/// Reference points for the CoreMark gauge, in kilo iterations/s, only those that fit the dial. These are measured ones, not
+/// computed ones, all threads, CoreMark size 666 (the 2K performance run, as here):
+///  - Ryzen 9 5950X: measured with the official EEMBC build (`make PORT_DIR=linux XCFLAGS="-DMULTITHREAD=32 -DUSE_PTHREAD
+///    -pthread"`, gcc -O2, Linux): 628k, this kernel gives 646k;
+///  - the rest: the Phoronix Test Suite "CoreMark" averages (OpenBenchmarking.org pts/coremark), read from search engine
+///    excerpts of that page (it is behind a Cloudflare check). Community averages differ in clocks and builds, so treat
+///    them as ballpark. The Zen 2 ones of that page were dropped: they came out higher than the measured Zen 3.
+///  - i5-12400 (308k, average of 13 runs): https://openbenchmarking.org/result/2201180-PTS-ADLY476155
+///  - i9-12900K (725k, a single result, 8 P + HT + 8 E, Ubuntu 21.10): https://openbenchmarking.org/result/2111052-TJ-COREI912997
+AVector<Gauge::Marker> referenceCoreMarkCpus(float maxK) {
+    const AVector<Gauge::Marker> all = {
+        { 177.f, "Apple M1" },
+        { 240.f, "Apple M3" },
+        { 308.f, "i5-12400" },
+        { 630.f, "Ryzen 9 5950X" },
+        { 725.f, "i9-12900K" },   // 8 P + HT + 8 E
+        { 990.f, "Ryzen 9 7950X" },
+        { 1955.f, "TR 7970X" },
+        { 3340.f, "TR 7980X" },
+    };
+    AVector<Gauge::Marker> result;
+    for (const auto& marker : all) {
+        if (marker.value <= maxK) {
+            result << marker;
+        }
+    }
+    return result;
 }
 
 struct State : AObject {
@@ -61,13 +125,16 @@ struct State : AObject {
     AProperty<float> coresFraction = 1.f;   // slider position of "Cores"
     const AVector<AProperty<bool>> enabledCores = makeEnabledCores();
     AProperty<float> load = 0.f;   // 0..1
-    AProperty<float> tflops = 0.f;
+    AProperty<int> workload = 0;   // index in WORKLOADS
+    AProperty<float> score = 0.f;   // of the selected workload: kilo CoreMark/s or TFLOPS
     AProperty<float> temperature = 0.f;
     AProperty<float> frequency = 0.f;
     AProperty<float> usage = 0.f;   // percent, all cores
+    AProperty<AVector<declarative::Plot::Marker>> peaks;
     _<ATimer> timer = _new<ATimer>(100ms);
 
     State() {
+        test.setWorkload(selectedWorkload());   // the test starts with fp32, the dropdown with whatever WORKLOADS[0] is
         for (unsigned i = 0; i < enabledCores.size(); ++i) {
             test.setCoreEnabled(i, *enabledCores[i]);
             connect(enabledCores[i].changed, [this, i](bool enabled) { test.setCoreEnabled(i, enabled); });
@@ -95,8 +162,17 @@ struct State : AObject {
         test.setLoad(value);
     }
 
+    ui::CpuStressTest::Workload selectedWorkload() const { return WORKLOADS[std::clamp(*workload, 0, WORKLOAD_COUNT - 1)]; }
+
+    void setWorkload(int id) {
+        workload = std::clamp(id, 0, WORKLOAD_COUNT - 1);
+        test.setWorkload(selectedWorkload());
+        score = 0.f;
+    }
+
     void update() {
-        tflops = float(test.sampleTflops());
+        const bool coreMark = selectedWorkload() == ui::CpuStressTest::Workload::CoreMark;
+        score = float(test.sampleRate() / (coreMark ? 1e3 : 1e12));
         temperature = cpuTemperatureCelsius().valueOr(0.f);
         frequency = cpuFrequencyGHz().valueOr(0.f);
         usage = cpuUsageFraction().valueOr(0.f) * 100.f;
@@ -315,20 +391,104 @@ _<AView> readoutPlate(contract::In<AString> readout) {
     };
 }
 
-_<AView> captioned(const AString& caption, _<AView> slider, contract::In<AString> readout) {
+/// `subheader` (optional) goes right under the caption.
+_<AView> captioned(const AString& caption, _<AView> slider, contract::In<AString> readout, _<AView> subheader = nullptr) {
+    if (!subheader) {
+        subheader = _new<AView>();
+        subheader->setVisibility(Visibility::GONE);
+    }
     return Vertical {
         Label { caption } AUI_OVERRIDE_STYLE { FontSize { 12_pt }, ATextAlign::CENTER },
+        std::move(subheader),
         std::move(slider) AUI_OVERRIDE_STYLE { Expanding { 0, 1 } },
         readoutPlate(std::move(readout)),
     } AUI_OVERRIDE_STYLE { LayoutSpacing { 6_dp }, Expanding { 0, 1 } };
 }
+
+/// Selector of what the workers execute; the parentheses say what the workload measures.
+_<AView> workloadDropdown(const _<State>& state) {
+    auto list = _new<ADropdownList>(AListModel<AString>::make({
+        AString("CoreMark (integer)"),   // WORKLOADS[0]
+        AString("FP32 (SIMD FMA)"),      // WORKLOADS[1]
+    }));
+    list->setSelectionId(*state->workload);
+    AObject::connect(list->selectionChanged, state, [state](int id) { state->setWorkload(id); });
+    return list;
+}
+
+/// A small triangle pointing down, centered in the view's width. Under the peak bubble it points at the peak.
+class PointerDown : public AView {
+public:
+    explicit PointerDown(AColor color) : mColor(color) {}
+
+    void render(ARenderContext ctx) override {
+        const float height = float(getSize().y);
+        const float centerX = float(getSize().x) / 2.f;
+        const float halfWidth = height;   // 90 degrees at the tip
+        // no polygon primitive: the triangle is a stack of one pixel high lines
+        AVector<std::pair<glm::vec2, glm::vec2>> rows;
+        for (float y = 0.5f; y < height; y += 1.f) {
+            const float half = halfWidth * (1.f - y / height);
+            rows.push_back({ { centerX - half, y }, { centerX + half, y } });
+        }
+        ctx.render.lines(ASolidBrush { mColor }, rows, ABorderStyle::Solid {}, AMetric(1.f, AMetric::T_PX));
+    }
+
+private:
+    AColor mColor;
+};
+
+/// The highest value of one plot axis over the visible time span. Plot knows nothing about peaks: the caller finds
+/// them and pins a view (a bubble with the value and a pointer under it) to the point.
+struct PeakTracker : AObject {
+    using Clock = declarative::Plot::Clock;
+
+    const size_t axis;
+    const std::function<AString(float)> format;
+    AProperty<AString> text;
+    const _<AView> view;
+
+    PeakTracker(size_t axis, AColor color, std::function<AString(float)> format)
+      : axis(axis), format(std::move(format)),
+        view(Vertical {
+            Label { AUI_REACT(*text) } AUI_OVERRIDE_STYLE {
+                FontSize { 8_pt },
+                TextColor { AColor::WHITE },
+                BackgroundSolid { color },
+                BorderRadius { 4_dp },
+                Padding { 2_dp, 5_dp },
+            },
+            _new<PointerDown>(color) AUI_OVERRIDE_STYLE { MinSize { 10_dp, 5_dp } },
+        }) {}
+
+    /// @return true if the peak has changed (a new maximum or the old one has left the visible span)
+    bool add(Clock::time_point time, float value) {
+        mHistory.push_back({ time, value });
+        while (mHistory.front().first < time - PLOT_SPAN) {
+            mHistory.pop_front();
+        }
+        const auto peak = *std::max_element(mHistory.begin(), mHistory.end(), [](const auto& a, const auto& b) { return a.second <= b.second; });
+        if (peak == mPeak) {
+            return false;
+        }
+        mPeak = peak;
+        text = format(peak.second);
+        return true;
+    }
+
+    declarative::Plot::Marker marker() const { return { mPeak.first, mPeak.second, axis, view }; }
+
+private:
+    std::deque<std::pair<Clock::time_point, float>> mHistory;
+    std::pair<Clock::time_point, float> mPeak {};
+};
 
 }   // namespace
 
 void ui::openCpuStressTestWindow(AWindow& parent) {
     auto window = _new<AWindow>(AWindow::Init {
       .title = "CPU Stress Test",
-      .width = 720_dp,
+      .width = 960_dp,
       .height = AMetric(std::clamp(140 + 18 * int(ui::CpuStressTest::maxThreads()), 300, 900), AMetric::T_DP),
       .parent = AWindow::Init::Parent { .window = parent },
     });
@@ -376,17 +536,109 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
             .majorTicks = 10,
         };
     }
-    meters << Gauge {
-        .value = AUI_REACT(*state->tflops),
+    // one gauge per workload, only the selected one is shown
+    const auto workloadGauge = [&](ui::CpuStressTest::Workload workload, _<AView> gauge) {
+        const auto visibility = [state, workload] { return state->selectedWorkload() == workload ? Visibility::VISIBLE : Visibility::GONE; };
+        gauge->setVisibility(visibility());
+        AObject::connect(state->workload.changed, gauge, [view = gauge.get(), visibility](int) { view->setVisibility(visibility()); });   // not the shared_ptr: it would own itself
+        meters << std::move(gauge);
+    };
+    const float coreMarkMax = coreMarkMaxK();
+    workloadGauge(ui::CpuStressTest::Workload::CoreMark, Gauge {
+        .value = AUI_REACT(*state->score),
+        .min = 0.f,
+        .max = coreMarkMax,
+        .yellowFrom = coreMarkMax,   // no danger zones: it is a score, not a limit
+        .redFrom = coreMarkMax,
+        .maroonFrom = coreMarkMax,
+        .title = "CoreMark",
+        .unit = "KILO ITER/S",
+        .precision = 0,
+        .scalePrecision = 0,
+        .majorTicks = 5,
+        .markers = referenceCoreMarkCpus(coreMarkMax),
+    });
+    workloadGauge(ui::CpuStressTest::Workload::Fp32, Gauge {
+        .value = AUI_REACT(*state->score),
         .min = 0.f,
         .max = TFLOPS_MAX,
         .title = "FP32",
         .unit = "TFLOPS",
         .precision = 2,
-        .scalePrecision = 1,
-        .majorTicks = 6,
-        .markers = referenceCpus(),
+        .scalePrecision = 0,
+        .majorTicks = 8,
+        .markers = referenceFp32Cpus(),
+    });
+
+    // the plot starts over when the workload changes: its history is in other units
+    const auto buildPlot = [state, coreMarkMax]() -> _<AView> {
+      // the plot shows every value that can be read here, each with its own axis
+      AVector<declarative::Plot::YAxisScale> scales;
+      AVector<const AProperty<float>*> sources;   // sources[i] is the value of scales[i]
+      AVector<_<PeakTracker>> trackers;
+      const auto addSeries = [&](const AProperty<float>& source, declarative::Plot::YAxisScale scale, bool trackPeak,
+                                 std::function<AString(float)> peakText) {
+          if (trackPeak) {
+              trackers << _new<PeakTracker>(scales.size(), scale.color, std::move(peakText));
+          }
+          scales << std::move(scale);
+          sources << &source;
+      };
+
+      if (cpuFrequencyGHz()) {
+          addSeries(state->frequency, { 0x2f7fd9_rgb, "GHz", 0.f, FREQUENCY_MAX_GHZ }, true, [](float v) { return "{:.2f} GHz"_format(v); });
+      }
+      if (cpuTemperatureCelsius()) {
+          addSeries(state->temperature, { 0xd93a2f_rgb, "\u00b0C", 10.f, 110.f }, true,
+                    [](float v) { return "{:.0f}\u00b0C"_format(v); });
+      }
+      if (cpuUsageFraction()) {
+          addSeries(state->usage, { 0xd98a1f_rgb, "%", 0.f, 100.f }, false, {});
+      }
+      if (state->selectedWorkload() == ui::CpuStressTest::Workload::CoreMark) {
+          addSeries(state->score, { 0x1fa653_rgb, "kCoreMark", 0.f, coreMarkMax }, true,
+                    [](float v) { return "{:.0f} kCoreMark"_format(v); });
+      } else {
+          addSeries(state->score, { 0x1fa653_rgb, "TFLOPS", 0.f, TFLOPS_MAX }, true,
+                    [](float v) { return "{:.2f} TFLOPS"_format(v); });
+      }
+
+        return declarative::Plot {
+            .pollInterval = 100ms,
+            .yAxisScales = std::move(scales),
+            .xAxisDistance = PLOT_SPAN,
+            .readMeasurements =
+                [state, sources = std::move(sources), trackers]() {
+                    const auto now = declarative::Plot::Clock::now();
+                    AVector<float> values;
+                    for (const auto* source : sources) {
+                        values << **source;
+                    }
+                    bool peaksChanged = false;
+                    for (const auto& tracker : trackers) {
+                        peaksChanged |= tracker->add(now, values[tracker->axis]);
+                    }
+                    if (peaksChanged) {
+                        AVector<declarative::Plot::Marker> markers;
+                        for (const auto& tracker : trackers) {
+                            markers << tracker->marker();
+                        }
+                        state->peaks = std::move(markers);
+                    }
+                    return values;
+                },
+            .markers = AUI_REACT(*state->peaks),
+        } AUI_OVERRIDE_STYLE { Expanding { 1, 2 } };
     };
+    auto plotHolder = _new<AViewContainer>();
+    plotHolder->setLayout(std::make_unique<AStackedLayout>());
+    plotHolder->setExpanding({ 1, 2 });
+    plotHolder->addView(buildPlot());
+    AObject::connect(state->workload.changed, plotHolder, [state, holder = plotHolder.get(), buildPlot](int) {
+        state->peaks = AVector<declarative::Plot::Marker> {};
+        holder->removeAllViews();
+        holder->addView(buildPlot());
+    });
 
     const unsigned coreCount = ui::CpuStressTest::maxThreads();   // the checkboxes go from the highest core to CPU 0
 
@@ -398,7 +650,12 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
 #endif
 
       Horizontal::Expanding {
-        Horizontal { std::move(meters) } AUI_OVERRIDE_STYLE { Expanding { 1, 1 }, LayoutSpacing { 8_dp } },
+        Vertical {
+          Centered {
+            Horizontal { std::move(meters) } AUI_OVERRIDE_STYLE { LayoutSpacing { 8_dp } },
+          },
+          plotHolder,
+        } AUI_OVERRIDE_STYLE { Expanding { 1, 1 }, LayoutSpacing { 8_dp } },
         // left: load (the main control, so it is wider and has a ladder of ticks), right: cores with a checkbox per core
         Horizontal {
           Vertical {
@@ -409,7 +666,8 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
                       AUI_REACT(*state->load), [state](aui::float_within_0_1 v) { state->setLoad(v); }, true),
                   loadTicks(AUI_REACT(*state->load), KNOB_INSET_DP),
                 } AUI_OVERRIDE_STYLE { LayoutSpacing { 8_dp }, Expanding { 0, 1 } },
-                AUI_REACT("LOAD: {}%"_format(int(std::lround(*state->load * 100.f))))),
+                AUI_REACT("LOAD: {}%"_format(int(std::lround(*state->load * 100.f)))),
+                workloadDropdown(state)),
           } AUI_OVERRIDE_STYLE { BackgroundSolid { COLOR_PANEL }, Border { 1_dp, COLOR_PANEL_BORDER }, BorderRadius { 10_dp }, Padding { 10_dp }, Expanding { 0, 1 } },
           Horizontal {
             captioned(

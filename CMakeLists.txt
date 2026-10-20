@@ -31,6 +31,10 @@ if (WIN32)
     target_link_libraries(${PROJECT_NAME} PRIVATE dxgi dwmapi pdh powrprof ole32 oleaut32 wbemuuid)
 endif ()
 
+# Vendored third-party code (CoreMark for the CPU stress test)
+add_subdirectory(vendor)
+target_link_libraries(${PROJECT_NAME} PRIVATE coremark_kernel)
+
 # CPU stress test: let the compiler fuse multiply-add into FMA where the target has it
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(${PROJECT_NAME} PRIVATE -ffp-contract=fast)
