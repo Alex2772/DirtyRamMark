@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <optional>
 #include <cmath>
 #include <deque>
 #include <AUI/ASS/Property/Expanding.h>
@@ -37,6 +38,7 @@
 #include "cpu_power.h"
 #include "cpu_temperature.h"
 #include "cpu_usage.h"
+#include "system_info.h"
 
 using namespace ass;
 using namespace declarative;
@@ -61,7 +63,8 @@ constexpr float COOLANT_MAX_CELSIUS = 60.f;   // gauge only
 // shared by the CPU and coolant plot axes: same unit, so the same scale
 constexpr float TEMPERATURE_MIN_CELSIUS = 10.f;
 constexpr float TEMPERATURE_MAX_CELSIUS = 110.f;
-constexpr float POWER_MAX_WATTS = 300.f;   // package power, up to a Threadripper's TDP
+constexpr float POWER_DEFAULT_MAX_WATTS = 200.f;   // for a CPU that is not in maxPowerWatts()
+constexpr float THROTTLE_DEFAULT_CELSIUS = 95.f;   // for a CPU that is not in throttleCelsius()
 constexpr std::chrono::seconds PLOT_SPAN = 3min;
 
 /// Reference points for the TFLOPS gauge: theoretical peak of fp32 FMA (AVX2/NEON), all cores at a typical sustained
@@ -82,6 +85,90 @@ AVector<Gauge::Marker> referenceFp32Cpus() {
         // Threadrippers are power-limited under a full AVX2 load: the all-core clock is well below the boost one
         { 4.3f, "TR 7970X" },          // 32 x 4.2 x 32
     };
+}
+
+/// Model name of this CPU ("AMD Ryzen 9 5950X 16-Core Processor", "Apple M3 Pro"), lowercase; empty if unknown.
+const std::string& cpuModelLower() {
+    static const std::string name = [] {
+        const auto info = systemInfo();
+        const auto* cpu = info.contains("CPU");
+        return cpu ? cpu->second.asStringOpt().valueOr(AString {}).lowercase().toStdString() : std::string {};
+    }();
+    return name;
+}
+
+bool containsAny(const std::string& text, std::initializer_list<const char*> needles) {
+    return std::any_of(needles.begin(), needles.end(), [&](const char* needle) { return text.find(needle) != std::string::npos; });
+}
+
+/// Maximum package power of the CPU in watts, rounded: the end of the power gauge. Not what the CPU draws all the time: PPT
+/// of Ryzens, PL2 ("maximum turbo power") of Intels, the peak measured under a full load for Apple (it has no official figure).
+/// std::nullopt if the CPU is not here (the gauge then uses POWER_DEFAULT_MAX_WATTS). Sources:
+///  - Ryzen 9 5950X / 5900X, Ryzen 7 5800X: PPT 142 W (105 W TDP), AM4 socket limit:
+///    https://www.tomshardware.com/reviews/amd-ryzen-7-5800x-zen-3-review/3
+///  - Ryzen 7 7800X3D and the other 120 W TDP Zen 4 X3D: PPT 162 W:
+///    https://www.tomshardware.com/reviews/amd-ryzen-7-7800x3d-cpu-review
+///  - Ryzen 9 7950X / 7900X / 9950X / 9900X: 170 W TDP, PPT 230 W:
+///    https://www.hwcooling.net/en/ryzen-9-7950x-amds-elite-cpu-beats-but-also-doesnt-beat-core-i9-review/
+///    https://wccftech.com/amd-ryzen-9-9950x-zen-5-cpu-tested-at-230w-power-limit-34-percent-faster-14900k/
+///  - Threadripper: 350 W TDP (only a third-party PSU calculator lists it, not verified with AMD):
+///    https://pc.nkbgaming.com/psu-calculator
+///  - Core i7-12700K: maximum turbo power 190 W (Intel ARK):
+///    https://www.intel.com/content/www/us/en/products/sku/134594/intel-core-i712700k-processor-25m-cache-up-to-5-00-ghz/specifications.html
+///  - Core i9-12900K: 241 W, i9-13900K / i9-14900K: PL2 253 W:
+///    https://www.cpubenchmark.net/cpu.php?cpu=Intel+Core+i9-12900K&id=4597
+///    https://www.cpu-monkey.com/en/compare_cpu-amd_ryzen_9_5950x-vs-intel_core_i9_13900k
+///  - Apple, measured: M1/M2/M3 about 20 W, M3 Pro just under 45 W, M3 Max CPU up to 56 W and 78 W of the whole chip:
+///    https://www.notebookcheck.net/Apple-M3-SoC-analyzed-Increased-performance-and-improved-efficiency.766789.0.html
+///    https://eclecticlight.co/2024/02/23/apple-silicon-2-power-and-thermal-glory/
+///    https://www.notebookcheck.net/Apple-M3-Pro-M3-Max-analysis-Apple-has-significantly-upgraded-its-Max-CPU.782974.0.html
+std::optional<float> maxPowerWatts(const std::string& cpu) {
+    if (containsAny(cpu, { "apple" })) {
+        if (containsAny(cpu, { "max", "ultra" })) return 80.f;
+        if (containsAny(cpu, { "pro" })) return 50.f;
+        return 25.f;
+    }
+    if (containsAny(cpu, { "threadripper" })) return 350.f;
+    if (containsAny(cpu, { "ryzen 9 7950x", "ryzen 9 7900x", "ryzen 9 9950x", "ryzen 9 9900x" })) return 250.f;
+    if (containsAny(cpu, { "x3d" })) return 170.f;
+    if (containsAny(cpu, { "ryzen 9 5950x", "ryzen 9 5900x", "ryzen 7 5800x" })) return 150.f;
+    if (containsAny(cpu, { "i9-12900k", "i9-13900k", "i9-14900k" })) return 250.f;
+    if (containsAny(cpu, { "i7-12700k" })) return 200.f;
+    return std::nullopt;
+}
+
+/// The gauges are tuned for this CPU (its power limit and throttling temperature are known).
+bool isKnownCpu() {
+    static const bool known = maxPowerWatts(cpuModelLower()).has_value();
+    return known;
+}
+
+float powerMaxWatts() {
+    static const float watts = maxPowerWatts(cpuModelLower()).value_or(POWER_DEFAULT_MAX_WATTS);
+    return watts;
+}
+
+/// Temperature where the CPU starts to throttle (the gauge marker). Intels run into Tjmax by design, as Ryzens do. Apple
+/// has no official figure: it comes from user reports. THROTTLE_DEFAULT_CELSIUS if the CPU is not here. Sources:
+///  - Intel 12th-14th gen: Tjmax 100 C: https://hone.gg/blog/best-cpu-temperature-for-pc/
+///  - Ryzen 7000/9000: Tjmax 95 C, X3D: 89 C; Ryzen 5000: 90 C (the sources disagree, 95 C for some models):
+///    https://hone.gg/blog/best-cpu-temperature-for-pc/ https://mypcbottleneck.com/cpu-temperature-range/
+///    https://www.propelrc.com/best-cpu-temperature-2/
+///  - Apple M1/M2/M3: about 95-100 C, a fanless M1 Air started at 97-98 C, M2 Pro at about 100 C:
+///    https://forums.macrumors.com/threads/m1-air-throttles-to-a-maximum-of-4w-during-a-game.2305984/
+///    https://smith6612.me/2023/10/26/apple-m2-pro-still-thermal-throttling/
+///    https://breezekit.app/en/guides/apple-silicon-temperature-guide
+float throttleCelsius(const std::string& cpu) {
+    if (containsAny(cpu, { "apple" }) || containsAny(cpu, { "intel" })) return 100.f;
+    if (containsAny(cpu, { "x3d" })) return 89.f;
+    if (containsAny(cpu, { "ryzen" })) {
+        // Ryzen 5000 are "ryzen N 5xxx"
+        for (const char* family : { "ryzen 9 5", "ryzen 7 5", "ryzen 5 5", "ryzen 3 5" }) {
+            if (cpu.find(family) != std::string::npos) return 90.f;
+        }
+        return 95.f;
+    }
+    return THROTTLE_DEFAULT_CELSIUS;
 }
 
 /// Rounds up to 1, 2, 5 x 10^n.
@@ -531,6 +618,7 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
             .title = "CPU",
             .unit = "\u00b0C",
             .majorTicks = 11,
+            .markers = { { throttleCelsius(cpuModelLower()), "THROTTLE" } },
         };
     }
     if (coolantTemperatureCelsius()) {
@@ -550,15 +638,15 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
         meters << Gauge {
             .value = AUI_REACT(*state->power),
             .min = 0.f,
-            .max = POWER_MAX_WATTS,
-            .yellowFrom = POWER_MAX_WATTS * 0.5f,
-            .redFrom = POWER_MAX_WATTS * 0.75f,
-            .maroonFrom = POWER_MAX_WATTS * 0.9f,
+            .max = powerMaxWatts(),
+            .yellowFrom = powerMaxWatts() * 0.5f,
+            .redFrom = powerMaxWatts() * 0.75f,
+            .maroonFrom = powerMaxWatts() * 0.9f,
             .title = "CPU",
             .unit = "WATTS",
             .precision = 0,
             .scalePrecision = 0,
-            .majorTicks = 10,   // 30 W per division
+            .majorTicks = 10,
         };
     }
     if (cpuUsageFraction()) {
@@ -636,7 +724,7 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
                     [](float v) { return "{:.1f}\u00b0C liquid"_format(v); });
       }
       if (cpuPowerWatts()) {
-          addSeries(state->power, { 0x8e44ad_rgb, "W", 0.f, POWER_MAX_WATTS }, true,
+          addSeries(state->power, { 0x8e44ad_rgb, "W", 0.f, powerMaxWatts() }, true,
                     [](float v) { return "{:.0f} W"_format(v); });
       }
       if (cpuUsageFraction()) {
@@ -687,6 +775,11 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
         holder->addView(buildPlot());
     });
 
+    _<AView> tunedNote = isKnownCpu() ? _<AView>(Centered { Label { "Gauges are tuned for your CPU" } AUI_OVERRIDE_STYLE {
+                                          FontSize { 9_pt },
+                                          TextColor { AColor::GRAY },
+                                        } })
+                                      : _new<AView>();   // nothing to say about an unknown CPU
     const unsigned coreCount = ui::CpuStressTest::maxThreads();   // the checkboxes go from the highest core to CPU 0
 
     window->setContents(Vertical {
@@ -701,6 +794,7 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
           Centered {
             Horizontal { std::move(meters) } AUI_OVERRIDE_STYLE { LayoutSpacing { 8_dp } },
           },
+          std::move(tunedNote),
           plotHolder,
         } AUI_OVERRIDE_STYLE { Expanding { 1, 1 }, LayoutSpacing { 8_dp } },
         // left: load (the main control, so it is wider and has a ladder of ticks), right: cores with a checkbox per core
