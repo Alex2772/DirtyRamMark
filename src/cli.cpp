@@ -15,6 +15,7 @@
 #include <AUI/Util/kAUI.h>
 #include "cli.h"
 #include "cpu_frequency.h"
+#include "cpu_power.h"
 #include "cpu_stresstest.h"
 #include "cpu_temperature.h"
 #include "memory_info.h"
@@ -89,12 +90,14 @@ int runStressTest(const AStringVector& args) {
     // TFLOPS for fp32, CoreMark iterations/s for coremark
     double sum = 0, maxTflops = 0;
     int samples = 0;
-    AOptional<float> maxTemperature, maxFrequency;
+    AOptional<float> maxTemperature, maxFrequency, maxPower;
+    cpuPowerWatts();   // the first call only takes the initial energy sample
     for (int second = 1; second <= int(duration); ++second) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
         const double tflops = coreMark ? test.sampleRate() : test.sampleTflops();
         const auto temperature = cpuTemperatureCelsius();
         const auto frequency = cpuFrequencyGHz();
+        const auto power = cpuPowerWatts();
         if (second > 1) {   // the first second includes the warm-up
             sum += tflops;
             ++samples;
@@ -102,6 +105,9 @@ int runStressTest(const AStringVector& args) {
         maxTflops = std::max(maxTflops, tflops);
         if (temperature) {
             maxTemperature = std::max(maxTemperature.valueOr(*temperature), *temperature);
+        }
+        if (power) {
+            maxPower = std::max(maxPower.valueOr(*power), *power);
         }
         if (frequency) {
             maxFrequency = std::max(maxFrequency.valueOr(*frequency), *frequency);
@@ -113,6 +119,9 @@ int runStressTest(const AStringVector& args) {
         }
         if (temperature) {
             std::cerr << ", " << "{:.0f} C"_format(*temperature).toStdString();
+        }
+        if (power) {
+            std::cerr << ", " << "{:.0f} W"_format(*power).toStdString();
         }
         std::cerr << std::endl;
     }
@@ -126,6 +135,9 @@ int runStressTest(const AStringVector& args) {
     result[coreMark ? "coremark_max" : "fp32_tflops_max"] = maxTflops;
     if (maxFrequency) {
         result["frequency_ghz_max"] = double(*maxFrequency);
+    }
+    if (maxPower) {
+        result["power_w_max"] = double(*maxPower);
     }
     if (maxTemperature) {
         result["temperature_c_max"] = double(*maxTemperature);
@@ -154,7 +166,7 @@ AOptional<int> runCli(const AStringVector& args) {
                      "           Never asks for authorization: the real timings and the memory modules info are reported as\n"
                      "           errors unless the process is already root (Linux) / administrator (Windows).\n"
                      "           Logs go to stderr.\n"
-                     "  --stress-test   CPU stress test (no GUI). Prints the score (TFLOPS or CoreMark iterations/s), frequency and\n"
+                     "  --stress-test   CPU stress test (no GUI). Prints the score (TFLOPS or CoreMark iterations/s), frequency, power and\n"
                      "           temperature every second to stderr and a JSON summary to stdout.\n"
                      "           --workload NAME fp32 (default) or coremark\n"
                      "           --cores N       number of threads (default: all logical processors)\n"

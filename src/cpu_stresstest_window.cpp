@@ -34,6 +34,7 @@
 #include "cpu_frequency.h"
 #include "cpu_stresstest.h"
 #include "cpu_stresstest_window.h"
+#include "cpu_power.h"
 #include "cpu_temperature.h"
 #include "cpu_usage.h"
 
@@ -56,6 +57,7 @@ constexpr float COREMARK_K_PER_THREAD = 50.f;
 
 constexpr float TFLOPS_MAX = 4.f;   // fits a 64-core Threadripper (see referenceCpus())
 constexpr float FREQUENCY_MAX_GHZ = 6.f;
+constexpr float POWER_MAX_WATTS = 300.f;   // package power, up to a Threadripper's TDP
 constexpr std::chrono::seconds PLOT_SPAN = 3min;
 
 /// Reference points for the TFLOPS gauge: theoretical peak of fp32 FMA (AVX2/NEON), all cores at a typical sustained
@@ -128,6 +130,7 @@ struct State : AObject {
     AProperty<int> workload = 0;   // index in WORKLOADS
     AProperty<float> score = 0.f;   // of the selected workload: kilo CoreMark/s or TFLOPS
     AProperty<float> temperature = 0.f;
+    AProperty<float> power = 0.f;   // watts
     AProperty<float> frequency = 0.f;
     AProperty<float> usage = 0.f;   // percent, all cores
     AProperty<AVector<declarative::Plot::Marker>> peaks;
@@ -174,6 +177,7 @@ struct State : AObject {
         const bool coreMark = selectedWorkload() == ui::CpuStressTest::Workload::CoreMark;
         score = float(test.sampleRate() / (coreMark ? 1e3 : 1e12));
         temperature = cpuTemperatureCelsius().valueOr(0.f);
+        power = cpuPowerWatts().valueOr(0.f);
         frequency = cpuFrequencyGHz().valueOr(0.f);
         usage = cpuUsageFraction().valueOr(0.f) * 100.f;
     }
@@ -523,6 +527,21 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
             .majorTicks = 11,
         };
     }
+    if (cpuPowerWatts()) {
+        meters << Gauge {
+            .value = AUI_REACT(*state->power),
+            .min = 0.f,
+            .max = POWER_MAX_WATTS,
+            .yellowFrom = POWER_MAX_WATTS * 0.5f,
+            .redFrom = POWER_MAX_WATTS * 0.75f,
+            .maroonFrom = POWER_MAX_WATTS * 0.9f,
+            .title = "CPU",
+            .unit = "WATTS",
+            .precision = 0,
+            .scalePrecision = 0,
+            .majorTicks = 10,   // 30 W per division
+        };
+    }
     if (cpuUsageFraction()) {
         meters << Gauge {
             .value = AUI_REACT(*state->usage),
@@ -591,6 +610,10 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
       if (cpuTemperatureCelsius()) {
           addSeries(state->temperature, { 0xd93a2f_rgb, "\u00b0C", 10.f, 110.f }, true,
                     [](float v) { return "{:.0f}\u00b0C"_format(v); });
+      }
+      if (cpuPowerWatts()) {
+          addSeries(state->power, { 0x8e44ad_rgb, "W", 0.f, POWER_MAX_WATTS }, true,
+                    [](float v) { return "{:.0f} W"_format(v); });
       }
       if (cpuUsageFraction()) {
           addSeries(state->usage, { 0xd98a1f_rgb, "%", 0.f, 100.f }, false, {});
