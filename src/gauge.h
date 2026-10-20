@@ -47,6 +47,10 @@ struct Gauge {
     /// Number of intervals between the numbered ticks of the scale (the numbers are min + i * (max - min) / majorTicks).
     int majorTicks = 10;
 
+    /// The dial catches fire at `fireFrom` and burns the hardest at `fireFull`. Disabled when `fireFrom` >= `fireFull`.
+    float fireFrom = 0.f;
+    float fireFull = 0.f;
+
     /// A reference point outside of the dial: a label at the given value; lights up once the needle passes it.
     struct Marker {
         float value;

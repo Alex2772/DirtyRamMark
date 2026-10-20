@@ -13,6 +13,7 @@
 #include <AUI/ASS/Property/Padding.h>
 #include <AUI/ASS/Property/TextColor.h>
 #include <AUI/Common/ATimer.h>
+#include <AUI/Thread/AThread.h>
 #include <AUI/Platform/AWindow.h>
 #include <AUI/Render/ABrush.h>
 #include <AUI/Render/ARenderContext.h>
@@ -63,6 +64,8 @@ constexpr float COOLANT_MAX_CELSIUS = 60.f;   // gauge only
 // shared by the CPU and coolant plot axes: same unit, so the same scale
 constexpr float TEMPERATURE_MIN_CELSIUS = 10.f;
 constexpr float TEMPERATURE_MAX_CELSIUS = 110.f;
+constexpr float FIRE_FROM_CELSIUS = 85.f;   // the gauge starts to burn...
+constexpr float FIRE_FULL_CELSIUS = 95.f;   // ...and burns the hardest here
 constexpr float POWER_DEFAULT_MAX_WATTS = 200.f;   // for a CPU that is not in maxPowerWatts()
 constexpr float THROTTLE_DEFAULT_CELSIUS = 95.f;   // for a CPU that is not in throttleCelsius()
 constexpr std::chrono::seconds PLOT_SPAN = 3min;
@@ -535,6 +538,27 @@ private:
     AColor mColor;
 };
 
+/// Caps the window at FRAME_RATE_LIMIT frames per second: every frame is drawn at most once per frame period, the rest
+/// of it is slept away. An invisible 1x1 view, as the window itself is a plain AWindow.
+/// Rendering a stress test at 144 FPS is the observer effect at its finest: the more often you look at the CPU load,
+/// the more load you get to look at. At 30 FPS the CPU can at least pretend it is not being watched.
+class FrameLimiter : public AView {
+public:
+    static constexpr int FRAME_RATE_LIMIT = 30;
+
+    void render(ARenderContext ctx) override {
+        constexpr auto period = std::chrono::microseconds(1'000'000 / FRAME_RATE_LIMIT);
+        const auto elapsed = std::chrono::steady_clock::now() - mLastFrame;
+        if (elapsed < period) {
+            AThread::sleep(std::chrono::duration_cast<std::chrono::milliseconds>(period - elapsed));
+        }
+        mLastFrame = std::chrono::steady_clock::now();
+    }
+
+private:
+    std::chrono::steady_clock::time_point mLastFrame = std::chrono::steady_clock::now();
+};
+
 /// The highest value of one plot axis over the visible time span. Plot knows nothing about peaks: the caller finds
 /// them and pins a view (a bubble with the value and a pointer under it) to the point.
 struct PeakTracker : AObject {
@@ -618,6 +642,8 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
             .title = "CPU",
             .unit = "\u00b0C",
             .majorTicks = 11,
+            .fireFrom = FIRE_FROM_CELSIUS,
+            .fireFull = FIRE_FULL_CELSIUS,
             .markers = { { throttleCelsius(cpuModelLower()), "THROTTLE" } },
         };
     }
@@ -783,6 +809,7 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
     const unsigned coreCount = ui::CpuStressTest::maxThreads();   // the checkboxes go from the highest core to CPU 0
 
     window->setContents(Vertical {
+      _new<FrameLimiter>() AUI_OVERRIDE_STYLE { FixedSize { 1_px, 1_px } },
 #if AUI_DEBUG
       Centered { Label { "Debug build - results might be inaccurate" } AUI_OVERRIDE_STYLE {
         TextColor(AColor::RED),

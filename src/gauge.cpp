@@ -1,6 +1,9 @@
 #include "gauge.h"
 
 #include <algorithm>
+#include <array>
+#include <random>
+#include <vector>
 #include <chrono>
 #include <cmath>
 #include <AUI/ASS/Property/Expanding.h>
@@ -112,6 +115,104 @@ bool drawNeedle(ARenderContext& ctx, glm::vec2 center, float reach, float clockD
     return true;
 }
 
+// assets/img/stresstest/fire/{flame,hot}.png, see scripts/generate_fire_sprites.py: flipbooks of a cluster of flame
+// tongues; the hot (paler) one is for the ignition flash
+constexpr int FIRE_FRAMES = 8;
+constexpr float FIRE_FPS = 12.f;
+constexpr float FIRE_ASPECT = 1.5f;   // height / width of a frame
+
+/**
+ * Fire made of particles. A particle is a big flame that sits on the rim of the dial, flickers (it is an animation:
+ * the frames of the flipbook change) and burns out. The flames overlap, which makes a single body of fire. The strength
+ * of the fire changes how many flames are alight, how big and how long-lived they are; a flame is always a complete
+ * flame, not just its tip.
+ * All coordinates are in dial radii relative to the center of the dial, so the fire does not care about the size.
+ */
+class Fire {
+public:
+    /// @param level strength of the fire in (0, 1]; 0 means that no new flames are born (the living ones die out)
+    /// @param flare ignition flash in [0, 1]: more, bigger and hotter flames for a moment
+    void update(float dt, float level, float flare) {
+        for (auto& p : mParticles) {
+            p.age += dt;
+            p.pos.y -= p.rise * dt;
+            p.pos.x += std::sin(p.age * 5.f + p.seed) * 0.12f * dt;   // flames waver
+        }
+        std::erase_if(mParticles, [](const Particle& p) { return p.age >= p.life; });
+        if (level <= 0.f) {
+            mSpawnDebt = 0.f;
+            return;
+        }
+        mSpawnDebt += (7.f + 9.f * level) * (1.f + 2.f * flare) * dt;
+        for (; mSpawnDebt >= 1.f; mSpawnDebt -= 1.f) {
+            spawn(level, flare);
+        }
+    }
+
+    void render(ARenderContext& ctx, glm::vec2 center, float radius) {
+        static const _<IDrawable> flame = IDrawable::fromUrl(AUrl(":img/stresstest/fire/flame.png"));
+        static const _<IDrawable> hot = IDrawable::fromUrl(AUrl(":img/stresstest/fire/hot.png"));
+
+        const auto saved = ctx.render.getColor();
+        for (const auto& p : mParticles) {
+            const auto& drawable = p.hot ? hot : flame;
+            if (!drawable) {
+                continue;
+            }
+            const float u = p.age / p.life;   // 0 -> born, 1 -> burnt out
+            const float grow = std::min(1.f, 0.5f + p.age * 4.f);   // flares up when born
+            const float dying = std::max(0.f, (u - 0.55f) / 0.45f);   // the last part of the life: shrinks and fades
+            const float scale = grow * (1.f - 0.45f * dying * dying);
+            const float alpha = std::min(1.f, p.age * 10.f) * (1.f - dying * dying);
+            const float width = p.size * scale * radius;
+            const float height = width * FIRE_ASPECT;
+            const int frame = int(p.age * FIRE_FPS + p.phase) % FIRE_FRAMES;
+            ctx.render.setColorForced(saved * AColor(1.f, 1.f, 1.f, alpha));
+            IDrawable::Params params;
+            params.offset = center + p.pos * radius - glm::vec2(width / 2.f, height);   // pos is the base of the flame
+            params.size = { width, height };
+            params.cropUvTopLeft = glm::vec2(float(frame) / FIRE_FRAMES, 0.f);
+            params.cropUvBottomRight = glm::vec2(float(frame + 1) / FIRE_FRAMES, 1.f);
+            drawable->draw(ctx.render, params);
+        }
+        ctx.render.setColorForced(saved);
+    }
+
+    bool active() const { return !mParticles.empty(); }
+    size_t count() const { return mParticles.size(); }
+
+private:
+    struct Particle {
+        glm::vec2 pos;
+        float rise = 0.f;
+        float age = 0.f;
+        float life = 1.f;
+        float size = 0.4f;
+        float seed = 0.f;
+        float phase = 0.f;   // which frame it starts with, so the flames don't flicker in sync
+        bool hot = false;
+    };
+    std::vector<Particle> mParticles;
+    float mSpawnDebt = 0.f;
+    std::mt19937 mRng { std::random_device {}() };
+
+    float random(float from, float to) { return std::uniform_real_distribution<float>(from, to)(mRng); }
+
+    void spawn(float level, float flare) {
+        Particle p;
+        // the flames sit on the rim, everywhere except the bottom (it is hidden behind the dial anyway)
+        const float angle = glm::radians(random(-115.f, 115.f));
+        p.pos = glm::vec2(std::sin(angle), -std::cos(angle)) * 0.85f;
+        p.rise = (0.10f + 0.10f * level + 0.25f * flare) * random(0.7f, 1.3f);
+        p.life = (0.8f + 0.3f * level) * (1.f + 0.25f * flare) * random(0.8f, 1.25f);
+        p.size = (0.40f + 0.12f * level + 0.14f * flare) * random(0.85f, 1.15f);
+        p.seed = random(0.f, 6.28f);
+        p.phase = random(0.f, float(FIRE_FRAMES));
+        p.hot = random(0.f, 1.f) < flare * 0.8f;
+        mParticles.push_back(p);
+    }
+};
+
 class GaugeView : public AView {
 public:
     AProperty<float> value = 0.f;
@@ -120,6 +221,8 @@ public:
     AProperty<float> yellowFrom = 1.f;
     AProperty<float> redFrom = 1.f;
     AProperty<float> maroonFrom = 1.f;
+    float fireFrom = 0.f;
+    float fireFull = 0.f;
     AString title;
     AString unit;
     int precision = 0;
@@ -175,12 +278,28 @@ public:
             ? std::sin(duration<float>(now.time_since_epoch()).count() * 70.f) * 0.004f * mShown
             : 0.f;
 
+        const bool fireEnabled = fireFrom < fireFull;
         const float size = float(std::min(getWidth(), getHeight()));
         // markers are drawn outside of the dial: leave some room for them
         const float radius = markers.empty() ? size / 2.f - 2.f : size * 0.5f * 0.64f;
         const glm::vec2 center = glm::vec2(getSize()) / 2.f;
         const float ring = radius * 0.09f;
         const float scaleRadius = radius * 0.90f;   // arcs are drawn from the outer border, so see the outer radius
+
+        // the fire: under the dial, so only the flames above and beside it are visible
+        const float needleValue = lo + mShown * (hi - lo);   // follows the needle, not the raw value
+        const bool burning = fireEnabled && !sweeping && needleValue >= fireFrom;
+        const float fireLevel =
+            burning ? 0.12f + 0.88f * std::clamp((needleValue - fireFrom) / (fireFull - fireFrom), 0.f, 1.f) : 0.f;
+        if (burning && !mWasBurning && mFire.count() < 8) {
+            mIgnitedAt = now;   // catches fire (not just flickers around the threshold)
+        }
+        mWasBurning = burning;
+        const float sinceIgnition = duration<float>(now - mIgnitedAt).count();
+        // flash: a quick rise, then a slower decay to the steady fire
+        const float flare = sinceIgnition < FLARE_RISE ? sinceIgnition / FLARE_RISE : std::exp(-(sinceIgnition - FLARE_RISE) * FLARE_DECAY);
+        mFire.update(std::min(dt, 0.05f), fireLevel, flare);
+        mFire.render(ctx, center, radius);
 
         // face: tucked under the metal bezel
         const float inner = radius * BEZEL_FACE_RATIO;
@@ -256,7 +375,7 @@ public:
             ctx.render.roundedRectangle(ASolidBrush { COLOR_NEEDLE }, center - glm::vec2(hubInner), glm::vec2(hubInner * 2.f), hubInner);
         }
         drawBezel(ctx, center, radius);
-        if (!settled || shake != 0.f) {
+        if (!settled || shake != 0.f || mFire.active()) {
             redraw();
         } else {
             mLastFrame.reset();
@@ -267,6 +386,11 @@ private:
     AOptional<steady_clock::time_point> mLastFrame;
     AOptional<steady_clock::time_point> mStart;
     float mShown = 0.f;
+    Fire mFire;
+    bool mWasBurning = false;
+    steady_clock::time_point mIgnitedAt;
+    static constexpr float FLARE_RISE = 0.12f;   // seconds
+    static constexpr float FLARE_DECAY = 3.2f;   // 1/seconds: the flash is gone in about a second
 
     /// Reference points around the dial: a tick on the rim and a label, bright once the needle has passed it.
     void drawMarkers(ARenderContext& ctx, glm::vec2 center, float radius, float shownValue, const auto& fraction) {
@@ -321,6 +445,8 @@ _<AView> declarative::Gauge::operator()() {
     view->scalePrecision = scalePrecision;
     view->majorTicks = majorTicks;
     view->markers = std::move(markers);
+    view->fireFrom = fireFrom;
+    view->fireFull = fireFull;
     const bool hasMarkers = !view->markers.empty();
     value.bindTo(view->value.assignment());
     min.bindTo(view->min.assignment());
