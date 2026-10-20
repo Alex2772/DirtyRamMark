@@ -91,3 +91,6 @@ AOptional<float> cpuTemperatureCelsius() {
     }
     return wmiThermalZoneCelsius();
 }
+
+// No unprivileged way to read the coolant temperature here (the vendors' own software only).
+AOptional<float> coolantTemperatureCelsius() { return std::nullopt; }

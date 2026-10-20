@@ -57,6 +57,7 @@ constexpr float COREMARK_K_PER_THREAD = 50.f;
 
 constexpr float TFLOPS_MAX = 4.f;   // fits a 64-core Threadripper (see referenceCpus())
 constexpr float FREQUENCY_MAX_GHZ = 6.f;
+constexpr float COOLANT_MAX_CELSIUS = 60.f;
 constexpr float POWER_MAX_WATTS = 300.f;   // package power, up to a Threadripper's TDP
 constexpr std::chrono::seconds PLOT_SPAN = 3min;
 
@@ -130,6 +131,7 @@ struct State : AObject {
     AProperty<int> workload = 0;   // index in WORKLOADS
     AProperty<float> score = 0.f;   // of the selected workload: kilo CoreMark/s or TFLOPS
     AProperty<float> temperature = 0.f;
+    AProperty<float> coolant = 0.f;   // liquid, °C
     AProperty<float> power = 0.f;   // watts
     AProperty<float> frequency = 0.f;
     AProperty<float> usage = 0.f;   // percent, all cores
@@ -177,6 +179,7 @@ struct State : AObject {
         const bool coreMark = selectedWorkload() == ui::CpuStressTest::Workload::CoreMark;
         score = float(test.sampleRate() / (coreMark ? 1e3 : 1e12));
         temperature = cpuTemperatureCelsius().valueOr(0.f);
+        coolant = coolantTemperatureCelsius().valueOr(0.f);
         power = cpuPowerWatts().valueOr(0.f);
         frequency = cpuFrequencyGHz().valueOr(0.f);
         usage = cpuUsageFraction().valueOr(0.f) * 100.f;
@@ -527,6 +530,19 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
             .majorTicks = 11,
         };
     }
+    if (coolantTemperatureCelsius()) {
+        meters << Gauge {
+            .value = AUI_REACT(*state->coolant),
+            .min = 0.f,
+            .max = COOLANT_MAX_CELSIUS,
+            .yellowFrom = 40.f,
+            .redFrom = 50.f,
+            .maroonFrom = 55.f,
+            .title = "COOLANT",
+            .unit = "\u00b0C",
+            .majorTicks = 6,
+        };
+    }
     if (cpuPowerWatts()) {
         meters << Gauge {
             .value = AUI_REACT(*state->power),
@@ -610,6 +626,10 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
       if (cpuTemperatureCelsius()) {
           addSeries(state->temperature, { 0xd93a2f_rgb, "\u00b0C", 10.f, 110.f }, true,
                     [](float v) { return "{:.0f}\u00b0C"_format(v); });
+      }
+      if (coolantTemperatureCelsius()) {
+          addSeries(state->coolant, { 0x2fb8d9_rgb, "\u00b0C liquid", 0.f, COOLANT_MAX_CELSIUS }, true,
+                    [](float v) { return "{:.1f}\u00b0C liquid"_format(v); });
       }
       if (cpuPowerWatts()) {
           addSeries(state->power, { 0x8e44ad_rgb, "W", 0.f, POWER_MAX_WATTS }, true,

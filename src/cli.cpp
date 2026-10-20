@@ -90,7 +90,7 @@ int runStressTest(const AStringVector& args) {
     // TFLOPS for fp32, CoreMark iterations/s for coremark
     double sum = 0, maxTflops = 0;
     int samples = 0;
-    AOptional<float> maxTemperature, maxFrequency, maxPower;
+    AOptional<float> maxTemperature, maxFrequency, maxPower, maxCoolant;
     cpuPowerWatts();   // the first call only takes the initial energy sample
     for (int second = 1; second <= int(duration); ++second) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -98,6 +98,7 @@ int runStressTest(const AStringVector& args) {
         const auto temperature = cpuTemperatureCelsius();
         const auto frequency = cpuFrequencyGHz();
         const auto power = cpuPowerWatts();
+        const auto coolant = coolantTemperatureCelsius();
         if (second > 1) {   // the first second includes the warm-up
             sum += tflops;
             ++samples;
@@ -105,6 +106,9 @@ int runStressTest(const AStringVector& args) {
         maxTflops = std::max(maxTflops, tflops);
         if (temperature) {
             maxTemperature = std::max(maxTemperature.valueOr(*temperature), *temperature);
+        }
+        if (coolant) {
+            maxCoolant = std::max(maxCoolant.valueOr(*coolant), *coolant);
         }
         if (power) {
             maxPower = std::max(maxPower.valueOr(*power), *power);
@@ -123,6 +127,9 @@ int runStressTest(const AStringVector& args) {
         if (power) {
             std::cerr << ", " << "{:.0f} W"_format(*power).toStdString();
         }
+        if (coolant) {
+            std::cerr << ", " << "{:.1f} C liquid"_format(*coolant).toStdString();
+        }
         std::cerr << std::endl;
     }
 
@@ -135,6 +142,9 @@ int runStressTest(const AStringVector& args) {
     result[coreMark ? "coremark_max" : "fp32_tflops_max"] = maxTflops;
     if (maxFrequency) {
         result["frequency_ghz_max"] = double(*maxFrequency);
+    }
+    if (maxCoolant) {
+        result["coolant_c_max"] = double(*maxCoolant);
     }
     if (maxPower) {
         result["power_w_max"] = double(*maxPower);
