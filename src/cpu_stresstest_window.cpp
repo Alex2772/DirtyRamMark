@@ -657,6 +657,7 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
             .maroonFrom = 55.f,
             .title = "COOLANT",
             .unit = "\u00b0C",
+            .precision = 1,
             .majorTicks = 6,
             .jitter = false,
         };
