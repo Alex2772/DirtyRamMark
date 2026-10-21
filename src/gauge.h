@@ -58,6 +58,9 @@ struct Gauge {
     };
     AVector<Marker> markers;
 
+    /// Whether the needle trembles under load (engine vibration).
+    bool jitter = true;
+
     _<AView> operator()();
 };
 

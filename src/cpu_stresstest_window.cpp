@@ -658,6 +658,7 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
             .title = "COOLANT",
             .unit = "\u00b0C",
             .majorTicks = 6,
+            .jitter = false,
         };
     }
     if (cpuPowerWatts()) {

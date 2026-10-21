@@ -228,6 +228,7 @@ public:
     int precision = 0;
     int scalePrecision = 0;
     int majorTicks = 10;
+    bool jitter = true;
     AVector<declarative::Gauge::Marker> markers;
 
     GaugeView() {
@@ -274,7 +275,7 @@ public:
             mShown = target;
         }
         // engine vibration: the harder the load, the more the needle trembles
-        const float shake = !sweeping && mShown > 0.05f
+        const float shake = jitter && !sweeping && mShown > 0.05f
             ? std::sin(duration<float>(now.time_since_epoch()).count() * 70.f) * 0.004f * mShown
             : 0.f;
 
@@ -444,6 +445,7 @@ _<AView> declarative::Gauge::operator()() {
     view->precision = precision;
     view->scalePrecision = scalePrecision;
     view->majorTicks = majorTicks;
+    view->jitter = jitter;
     view->markers = std::move(markers);
     view->fireFrom = fireFrom;
     view->fireFull = fireFull;
