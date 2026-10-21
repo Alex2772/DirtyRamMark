@@ -26,6 +26,7 @@ namespace {
 // Angles are in degrees, clockwise from the top (12 o'clock), like AAngleRadians in IRenderer::squareSector.
 constexpr float DIAL_BEGIN = 225.f;   // bottom left
 constexpr float DIAL_SWEEP = 270.f;
+constexpr float DIAL_SIZE_SCALE = 0.75f;   // the dial's size relative to the original; the text is not scaled
 constexpr float SWEEP_SECONDS = 1.6f;   // duration of the needle test at startup
 
 constexpr AColor COLOR_FACE = 0x1a1c21_rgb;
@@ -284,6 +285,8 @@ public:
         // markers are drawn outside of the dial: leave some room for them
         const float radius = markers.empty() ? size / 2.f - 2.f : size * 0.5f * 0.64f;
         const glm::vec2 center = glm::vec2(getSize()) / 2.f;
+        // the dial is smaller than it used to be, but the text keeps its size
+        const float textRadius = radius / DIAL_SIZE_SCALE;
         const float ring = radius * 0.09f;
         const float scaleRadius = radius * 0.90f;   // arcs are drawn from the outer border, so see the outer radius
 
@@ -329,7 +332,7 @@ public:
 
         // scale
         AFontStyle numbers;
-        numbers.size = unsigned(std::max(8.f, radius * 0.11f));
+        numbers.size = unsigned(std::max(8.f, textRadius * 0.11f));
         const int MAJOR = std::max(1, majorTicks);
         constexpr int MINOR_PER_MAJOR = 5;
         for (int i = 0; i <= MAJOR * MINOR_PER_MAJOR; ++i) {
@@ -351,19 +354,19 @@ public:
 
         // caption and digital readout
         AFontStyle caption;
-        caption.size = unsigned(std::max(8.f, radius * 0.13f));
+        caption.size = unsigned(std::max(8.f, textRadius * 0.13f));
         caption.bold = true;
-        centeredText(ctx, title, center + glm::vec2(0.f, -radius * 0.38f), caption, COLOR_TICK.transparentize(0.25f));
+        centeredText(ctx, title, center + glm::vec2(0.f, -radius * 0.27f), caption, COLOR_TICK.transparentize(0.25f));
 
         AFontStyle readout;
-        readout.size = unsigned(std::max(10.f, radius * 0.22f));
+        readout.size = unsigned(std::max(10.f, textRadius * 0.22f));
         readout.bold = true;
         const float shownValue = lo + mShown * (hi - lo);
-        centeredText(ctx, "{:.{}f}"_format(shownValue, precision), center + glm::vec2(0.f, radius * 0.50f), readout, COLOR_TICK);
+        centeredText(ctx, "{:.{}f}"_format(shownValue, precision), center + glm::vec2(0.f, radius * 0.45f), readout, COLOR_TICK);
 
         AFontStyle unitStyle;
-        unitStyle.size = unsigned(std::max(8.f, radius * 0.11f));
-        centeredText(ctx, unit, center + glm::vec2(0.f, radius * 0.68f), unitStyle, COLOR_TICK.transparentize(0.4f));
+        unitStyle.size = unsigned(std::max(8.f, textRadius * 0.11f));
+        centeredText(ctx, unit, center + glm::vec2(0.f, radius * 0.70f), unitStyle, COLOR_TICK.transparentize(0.4f));
 
         // needle
         const float angle = DIAL_BEGIN + (mShown + shake) * DIAL_SWEEP;
@@ -396,7 +399,7 @@ private:
     /// Reference points around the dial: a tick on the rim and a label, bright once the needle has passed it.
     void drawMarkers(ARenderContext& ctx, glm::vec2 center, float radius, float shownValue, const auto& fraction) {
         AFontStyle style;
-        style.size = unsigned(std::max(9.f, radius * 0.095f));
+        style.size = unsigned(std::max(9.f, radius / DIAL_SIZE_SCALE * 0.095f));
         for (const auto& marker : markers) {
             const float angle = DIAL_BEGIN + fraction(marker.value) * DIAL_SWEEP;
             const bool reached = shownValue >= marker.value;
@@ -456,9 +459,10 @@ _<AView> declarative::Gauge::operator()() {
     yellowFrom.bindTo(view->yellowFrom.assignment());
     redFrom.bindTo(view->redFrom.assignment());
     maroonFrom.bindTo(view->maroonFrom.assignment());
+    const auto dp = [](float v) { return AMetric(v * DIAL_SIZE_SCALE, AMetric::T_DP); };
     view AUI_OVERRIDE_STYLE {
-        MinSize { hasMarkers ? 350_dp : 200_dp, hasMarkers ? 300_dp : 200_dp },
-        MaxSize { hasMarkers ? 400_dp : 300_dp, 300_dp },
+        MinSize { dp(hasMarkers ? 350.f : 200.f), dp(hasMarkers ? 300.f : 200.f) },
+        MaxSize { dp(hasMarkers ? 400.f : 300.f), dp(300.f) },
         Expanding {1, 1},
     };
     return Centered { view };
