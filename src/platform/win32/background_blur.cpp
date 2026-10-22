@@ -4,6 +4,7 @@
 
 #include <windows.h>
 #include <dwmapi.h>
+#include <commctrl.h>
 
 namespace {
 
@@ -56,25 +57,89 @@ bool enableAlphaComposition(HWND hwnd) {
     return true;
 }
 
-bool enableAccentBlur(HWND hwnd) {
+SetWindowCompositionAttributeFn findSetWindowCompositionAttribute() {
     auto user32 = GetModuleHandleW(L"user32.dll");
-    auto setWindowCompositionAttribute = user32 ? reinterpret_cast<SetWindowCompositionAttributeFn>(
-                                                      GetProcAddress(user32, "SetWindowCompositionAttribute"))
-                                                : nullptr;
+    return user32 ? reinterpret_cast<SetWindowCompositionAttributeFn>(
+                        GetProcAddress(user32, "SetWindowCompositionAttribute"))
+                  : nullptr;
+}
+
+bool setAccent(HWND hwnd, AccentState state) {
+    auto setWindowCompositionAttribute = findSetWindowCompositionAttribute();
     if (!setWindowCompositionAttribute) {
-        ALogger::warn(LOG_TAG) << "SetWindowCompositionAttribute not found";
         return false;
     }
     // gradientColor is ABGR; the alpha must be non-zero for the acrylic to blur, a nearly transparent tint keeps the
     // look of the window content unchanged
-    AccentPolicy policy { ACCENT_ENABLE_ACRYLICBLURBEHIND, 0, 0x01000000, 0 };
+    AccentPolicy policy { state, 0, state == ACCENT_ENABLE_ACRYLICBLURBEHIND ? 0x01000000u : 0u, 0 };
     WindowCompositionAttributeData data { WCA_ACCENT_POLICY, &policy, sizeof(policy) };
-    if (setWindowCompositionAttribute(hwnd, &data)) {
+    return setWindowCompositionAttribute(hwnd, &data);
+}
+
+bool gAcrylic = false;
+bool gMoving = false;
+
+void beginMove(HWND hwnd) {
+    if (gMoving) {
+        return;
+    }
+    gMoving = true;
+    setAccent(hwnd, ACCENT_ENABLE_BLURBEHIND);
+}
+
+void endMove(HWND hwnd, const char* reason) {
+    if (!gMoving) {
+        return;
+    }
+    gMoving = false;
+    ALogger::info(LOG_TAG) << "restoring acrylic (" << reason << ")";
+    // DWM ignores a repeated accent change when it thinks nothing has changed, so go through the disabled state
+    setAccent(hwnd, ACCENT_DISABLED);
+    setAccent(hwnd, ACCENT_ENABLE_ACRYLICBLURBEHIND);
+    RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_FRAME | RDW_UPDATENOW);
+}
+
+/// Acrylic is re-rendered by DWM on every step of the window move on Windows 10, which makes the cursor lag behind the
+/// window. The cheaper plain blur is used while the window is being dragged or resized.
+LRESULT CALLBACK blurSubclassProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR) {
+    if (gAcrylic) {
+        switch (message) {
+            case WM_ENTERSIZEMOVE:
+                beginMove(hwnd);
+                break;
+            case WM_EXITSIZEMOVE:
+                endMove(hwnd, "WM_EXITSIZEMOVE");
+                break;
+            // the modal move loop of a custom (extended) decoration may not end with WM_EXITSIZEMOVE; any sign that
+            // the mouse button is released is a reason to restore
+            case WM_CAPTURECHANGED:
+            case WM_LBUTTONUP:
+            case WM_NCLBUTTONUP:
+                endMove(hwnd, "button released");
+                break;
+            case WM_MOUSEMOVE:
+            case WM_NCMOUSEMOVE:
+                if (gMoving && !(GetKeyState(VK_LBUTTON) & 0x8000)) {
+                    endMove(hwnd, "mouse move without button");
+                }
+                break;
+        }
+    }
+    return DefSubclassProc(hwnd, message, wParam, lParam);
+}
+
+bool enableAccentBlur(HWND hwnd) {
+    if (!findSetWindowCompositionAttribute()) {
+        ALogger::warn(LOG_TAG) << "SetWindowCompositionAttribute not found";
+        return false;
+    }
+    if (setAccent(hwnd, ACCENT_ENABLE_ACRYLICBLURBEHIND)) {
+        gAcrylic = true;
+        SetWindowSubclass(hwnd, &blurSubclassProc, 1, 0);
         return true;
     }
     ALogger::warn(LOG_TAG) << "acrylic failed (" << GetLastError() << "), falling back to plain blur";
-    policy = { ACCENT_ENABLE_BLURBEHIND, 0, 0, 0 };
-    if (!setWindowCompositionAttribute(hwnd, &data)) {
+    if (!setAccent(hwnd, ACCENT_ENABLE_BLURBEHIND)) {
         ALogger::warn(LOG_TAG) << "SetWindowCompositionAttribute failed: " << GetLastError();
         return false;
     }
