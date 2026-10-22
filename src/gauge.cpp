@@ -228,6 +228,7 @@ public:
     AString unit;
     int precision = 0;
     int scalePrecision = 0;
+    float scaleDivisor = 1.f;
     int majorTicks = 10;
     bool jitter = true;
     AVector<declarative::Gauge::Marker> markers;
@@ -343,7 +344,7 @@ public:
             ctx.render.line(ASolidBrush { COLOR_TICK }, polar(center, outerR, angle), polar(center, outerR - tick, angle),
                             ABorderStyle::Solid {}, AMetric(major ? 1.5f : 1.f, AMetric::T_PX));
             if (major) {
-                const auto text = "{:.{}f}"_format(lo + float(i / MINOR_PER_MAJOR) / float(MAJOR) * (hi - lo), scalePrecision);
+                const auto text = "{:.{}f}"_format((lo + float(i / MINOR_PER_MAJOR) / float(MAJOR) * (hi - lo)) / scaleDivisor, scalePrecision);
                 const float width = float(numbers.getWidth(text));
                 const auto p = polar(center, outerR - tick - radius * 0.11f, angle);
                 drawText(ctx, text, p - glm::vec2(width / 2.f, -float(numbers.size) * 0.35f), numbers, COLOR_TICK);
@@ -362,7 +363,7 @@ public:
         readout.size = unsigned(std::max(10.f, textRadius * 0.22f));
         readout.bold = true;
         const float shownValue = lo + mShown * (hi - lo);
-        centeredText(ctx, "{:.{}f}"_format(shownValue, precision), center + glm::vec2(0.f, radius * 0.45f), readout, COLOR_TICK);
+        centeredText(ctx, "{:.{}f}"_format(shownValue / scaleDivisor, precision), center + glm::vec2(0.f, radius * 0.45f), readout, COLOR_TICK);
 
         AFontStyle unitStyle;
         unitStyle.size = unsigned(std::max(8.f, textRadius * 0.11f));
@@ -447,6 +448,7 @@ _<AView> declarative::Gauge::operator()() {
     view->unit = std::move(unit);
     view->precision = precision;
     view->scalePrecision = scalePrecision;
+    view->scaleDivisor = scaleDivisor;
     view->majorTicks = majorTicks;
     view->jitter = jitter;
     view->markers = std::move(markers);

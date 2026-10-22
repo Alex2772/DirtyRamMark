@@ -90,7 +90,7 @@ int runStressTest(const AStringVector& args) {
     // TFLOPS for fp32, CoreMark iterations/s for coremark
     double sum = 0, maxTflops = 0;
     int samples = 0;
-    AOptional<float> maxTemperature, maxFrequency, maxPower, maxCoolant;
+    AOptional<float> maxTemperature, maxFrequency, maxPower, maxCoolant, maxVrm, minPump;
     cpuPowerWatts();   // the first call only takes the initial energy sample
     for (int second = 1; second <= int(duration); ++second) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -99,6 +99,8 @@ int runStressTest(const AStringVector& args) {
         const auto frequency = cpuFrequencyGHz();
         const auto power = cpuPowerWatts();
         const auto coolant = coolantTemperatureCelsius();
+        const auto vrm = vrmTemperatureCelsius();
+        const auto pump = pumpRpm();
         if (second > 1) {   // the first second includes the warm-up
             sum += tflops;
             ++samples;
@@ -109,6 +111,12 @@ int runStressTest(const AStringVector& args) {
         }
         if (coolant) {
             maxCoolant = std::max(maxCoolant.valueOr(*coolant), *coolant);
+        }
+        if (vrm) {
+            maxVrm = std::max(maxVrm.valueOr(*vrm), *vrm);
+        }
+        if (pump) {
+            minPump = std::min(minPump.valueOr(*pump), *pump);
         }
         if (power) {
             maxPower = std::max(maxPower.valueOr(*power), *power);
@@ -130,6 +138,12 @@ int runStressTest(const AStringVector& args) {
         if (coolant) {
             std::cerr << ", " << "{:.1f} C liquid"_format(*coolant).toStdString();
         }
+        if (vrm) {
+            std::cerr << ", " << "{:.0f} C VRM"_format(*vrm).toStdString();
+        }
+        if (pump) {
+            std::cerr << ", " << "{:.0f} RPM pump"_format(*pump).toStdString();
+        }
         std::cerr << std::endl;
     }
 
@@ -145,6 +159,12 @@ int runStressTest(const AStringVector& args) {
     }
     if (maxCoolant) {
         result["coolant_c_max"] = double(*maxCoolant);
+    }
+    if (maxVrm) {
+        result["vrm_c_max"] = double(*maxVrm);
+    }
+    if (minPump) {
+        result["pump_rpm_min"] = double(*minPump);
     }
     if (maxPower) {
         result["power_w_max"] = double(*maxPower);

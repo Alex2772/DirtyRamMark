@@ -94,3 +94,8 @@ AOptional<float> cpuTemperatureCelsius() {
 
 // No unprivileged way to read the coolant temperature here (the vendors' own software only).
 AOptional<float> coolantTemperatureCelsius() { return std::nullopt; }
+
+// No unprivileged way to read the VRM temperature and the pump speed here.
+AOptional<float> vrmTemperatureCelsius() { return std::nullopt; }
+
+AOptional<float> pumpRpm() { return std::nullopt; }

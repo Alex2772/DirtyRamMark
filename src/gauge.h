@@ -44,6 +44,9 @@ struct Gauge {
     /// Digits after the decimal point in the scale numbers.
     int scalePrecision = 0;
 
+    /// The scale numbers and the readout are divided by this, like a car's tachometer showing thousands of RPM (the digital readout too).
+    float scaleDivisor = 1.f;
+
     /// Number of intervals between the numbered ticks of the scale (the numbers are min + i * (max - min) / majorTicks).
     int majorTicks = 10;
 

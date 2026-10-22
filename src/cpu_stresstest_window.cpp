@@ -26,11 +26,13 @@
 #include <range/v3/view/reverse.hpp>
 #include <AUI/Layout/AStackedLayout.h>
 #include <AUI/Model/AListModel.h>
+#include <AUI/View/AButton.h>
 #include <AUI/View/ACheckBox.h>
 #include <AUI/View/ADropdownList.h>
 #include <AUI/View/AViewContainer.h>
 #include <AUI/View/ASlider.h>
 
+#include "all_indicators_window.h"
 #include "gauge.h"
 #include "plot.h"
 #include "cpu_frequency.h"
@@ -60,7 +62,11 @@ constexpr float COREMARK_K_PER_THREAD = 50.f;
 
 constexpr float TFLOPS_MAX = 4.f;   // fits a 64-core Threadripper (see referenceCpus())
 constexpr float FREQUENCY_MAX_GHZ = 6.f;
-constexpr float COOLANT_MAX_CELSIUS = 60.f;   // gauge only
+constexpr float GAUGE_TEMPERATURE_MIN_CELSIUS = 30.f;   // gauge only
+constexpr float COOLANT_MIN_CELSIUS = GAUGE_TEMPERATURE_MIN_CELSIUS;   // gauge only
+constexpr float COOLANT_MAX_CELSIUS = 50.f;   // gauge only
+constexpr float VRM_MAX_CELSIUS = 120.f;   // gauge only
+constexpr float PUMP_MAX_RPM = 5000.f;   // gauge only: AIO pumps run at 2-3k, custom loop ones up to 5k
 // shared by the CPU and coolant plot axes: same unit, so the same scale
 constexpr float TEMPERATURE_MIN_CELSIUS = 10.f;
 constexpr float TEMPERATURE_MAX_CELSIUS = 110.f;
@@ -225,6 +231,8 @@ struct State : AObject {
     AProperty<float> score = 0.f;   // of the selected workload: kilo CoreMark/s or TFLOPS
     AProperty<float> temperature = 0.f;
     AProperty<float> coolant = 0.f;   // liquid, °C
+    AProperty<float> vrm = 0.f;   // °C
+    AProperty<float> pump = 0.f;   // RPM
     AProperty<float> power = 0.f;   // watts
     AProperty<float> frequency = 0.f;
     AProperty<float> usage = 0.f;   // percent, all cores
@@ -273,6 +281,8 @@ struct State : AObject {
         score = float(test.sampleRate() / (coreMark ? 1e3 : 1e12));
         temperature = cpuTemperatureCelsius().valueOr(0.f);
         coolant = coolantTemperatureCelsius().valueOr(0.f);
+        vrm = vrmTemperatureCelsius().valueOr(0.f);
+        pump = pumpRpm().valueOr(0.f);
         power = cpuPowerWatts().valueOr(0.f);
         frequency = cpuFrequencyGHz().valueOr(0.f);
         usage = cpuUsageFraction().valueOr(0.f) * 100.f;
@@ -634,14 +644,14 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
     if (cpuTemperatureCelsius()) {
         meters << Gauge {
             .value = AUI_REACT(*state->temperature),
-            .min = 0.f,
+            .min = GAUGE_TEMPERATURE_MIN_CELSIUS,
             .max = 110.f,
             .yellowFrom = 60.f,
             .redFrom = 80.f,
             .maroonFrom = 95.f,
             .title = "CPU",
             .unit = "\u00b0C",
-            .majorTicks = 11,
+            .majorTicks = 8,
             .fireFrom = FIRE_FROM_CELSIUS,
             .fireFull = FIRE_FULL_CELSIUS,
             .markers = { { throttleCelsius(cpuModelLower()), "THROTTLE" } },
@@ -650,15 +660,45 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
     if (coolantTemperatureCelsius()) {
         meters << Gauge {
             .value = AUI_REACT(*state->coolant),
-            .min = 0.f,
+            .min = COOLANT_MIN_CELSIUS,
             .max = COOLANT_MAX_CELSIUS,
             .yellowFrom = 40.f,
-            .redFrom = 50.f,
-            .maroonFrom = 55.f,
+            .redFrom = 45.f,
+            .maroonFrom = 48.f,
             .title = "COOLANT",
             .unit = "\u00b0C",
             .precision = 1,
-            .majorTicks = 6,
+            .majorTicks = 4,
+            .jitter = false,
+        };
+    }
+    if (pumpRpm()) {
+        meters << Gauge {
+            .value = AUI_REACT(*state->pump),
+            .min = 0.f,
+            .max = PUMP_MAX_RPM,
+            .yellowFrom = PUMP_MAX_RPM * 0.7f,   // a slow pump is a setting, not an emergency: the zones are about noise and wear
+            .redFrom = PUMP_MAX_RPM * 0.85f,
+            .maroonFrom = PUMP_MAX_RPM * 0.95f,
+            .title = "PUMP",
+            .unit = "x1000 RPM",
+            .precision = 1,
+            .scaleDivisor = 1000.f,
+            .majorTicks = 5,
+            .jitter = false,
+        };
+    }
+    if (vrmTemperatureCelsius()) {
+        meters << Gauge {
+            .value = AUI_REACT(*state->vrm),
+            .min = GAUGE_TEMPERATURE_MIN_CELSIUS,
+            .max = VRM_MAX_CELSIUS,
+            .yellowFrom = 80.f,
+            .redFrom = 100.f,
+            .maroonFrom = 110.f,
+            .title = "VRM",
+            .unit = "\u00b0C",
+            .majorTicks = 9,
             .jitter = false,
         };
     }
@@ -751,6 +791,14 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
           addSeries(state->coolant, { 0x2fb8d9_rgb, "\u00b0C liquid", TEMPERATURE_MIN_CELSIUS, TEMPERATURE_MAX_CELSIUS }, true,
                     [](float v) { return "{:.1f}\u00b0C liquid"_format(v); });
       }
+      // the same order as the gauges
+      if (pumpRpm()) {
+          addSeries(state->pump, { 0x7a8ba3_rgb, "RPM", 0.f, PUMP_MAX_RPM }, true, [](float v) { return "{:.0f} RPM"_format(v); });
+      }
+      if (vrmTemperatureCelsius()) {
+          addSeries(state->vrm, { 0xd9437e_rgb, "\u00b0C VRM", 0.f, VRM_MAX_CELSIUS }, true,
+                    [](float v) { return "{:.0f}\u00b0C VRM"_format(v); });
+      }
       if (cpuPowerWatts()) {
           addSeries(state->power, { 0x8e44ad_rgb, "W", 0.f, powerMaxWatts() }, true,
                     [](float v) { return "{:.0f} W"_format(v); });
@@ -824,6 +872,12 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
             Horizontal { std::move(meters) } AUI_OVERRIDE_STYLE { LayoutSpacing { 8_dp } },
           },
           std::move(tunedNote),
+          Centered {
+            Button {
+              .content = Label { "All Indicators..." },
+              .onClick = [parent = window.get()] { ui::openAllIndicatorsWindow(*parent); },   // not the shared_ptr: it would own itself
+            },
+          },
           plotHolder,
         } AUI_OVERRIDE_STYLE { Expanding { 1, 1 }, LayoutSpacing { 8_dp } },
         // left: load (the main control, so it is wider and has a ladder of ticks), right: cores with a checkbox per core
