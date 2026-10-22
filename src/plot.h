@@ -15,7 +15,7 @@ namespace declarative {
  * @details
  * The plot polls `readMeasurements` every `pollInterval` and stamps the returned values with the current time. Each
  * returned value belongs to the y axis of the same index in `yAxisScales`, so a single plot shows any number of series,
- * each with its own scale. The axes (a colored line with ticks, tip numbers and the name of the series) are on the
+ * each with its own scale (`extraSeriesAxes` adds more curves to the existing axes). The axes (a colored line with ticks, tip numbers and the name of the series) are on the
  * right, one column per axis. The grid is shared: the plot height is split into `yDivisions` equal parts, so the ticks
  * of every axis are aligned with the horizontal grid lines; the vertical lines are drawn at "nice" time steps and flow
  * together with the data. The older the data, the more transparent the curve: it fades out towards the left edge.
@@ -64,7 +64,22 @@ struct Plot {
     /// Width of the visible time span.
     contract::In<std::chrono::seconds> xAxisDistance = std::chrono::seconds(60);
 
-    /// Returns one value per element of `yAxisScales` (a missing value is skipped). Called on the UI thread.
+    /// Series drawn in addition to one per axis, in the color of an existing axis and without an axis of their own:
+    /// element k is the axis of the value with the index `yAxisScales.size() + k` returned by `readMeasurements`.
+    /// They are drawn below the series of the axes.
+    AVector<size_t> extraSeriesAxes = {};
+
+    /// The area between two series (indices of the values returned by `readMeasurements`), drawn below all the curves.
+    /// The alpha of `color` is the opacity of the fill.
+    struct Fill {
+        size_t seriesA;
+        size_t seriesB;
+        AColor color;
+    };
+    AVector<Fill> fills = {};
+
+    /// Returns one value per element of `yAxisScales`, then one per element of `extraSeriesAxes` (a missing value is
+    /// skipped). Called on the UI thread.
     std::function<AVector<float>()> readMeasurements;
 
     contract::In<AVector<Marker>> markers = AVector<Marker> {};

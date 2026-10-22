@@ -2,3 +2,4 @@
 
 // No unprivileged way to read the current CPU frequency here (yet).
 AOptional<float> cpuFrequencyGHz() { return std::nullopt; }
+std::vector<float> cpuFrequenciesGHz() { return {}; }

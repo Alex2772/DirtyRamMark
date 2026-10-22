@@ -1,6 +1,7 @@
 #include "plot.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <deque>
@@ -58,6 +59,8 @@ public:
     AProperty<std::chrono::seconds> xAxisDistance = 60s;
     AProperty<AVector<Plot::Marker>> markers;
     std::function<AVector<float>()> readMeasurements;
+    AVector<size_t> extraSeriesAxes;
+    AVector<Plot::Fill> fills;
     int yDivisions = 10;
 
     PlotView() {
@@ -74,6 +77,7 @@ public:
         const auto geometry = computeGeometry(scales);
 
         drawGrid(ctx, geometry, now);
+        drawFills(ctx, geometry, scales, now);
         drawSeries(ctx, geometry, scales, now);
         drawAxes(ctx, geometry, scales);
         drawMarkers(ctx, geometry, scales, now);
@@ -211,13 +215,103 @@ private:
         }
     }
 
+    /// The axis a series belongs to; the series of the axes come first, then `extraSeriesAxes`.
+    size_t axisOfSeries(size_t series, size_t axisCount) const {
+        if (series < axisCount) {
+            return series;
+        }
+        return series - axisCount < extraSeriesAxes.size() ? extraSeriesAxes[series - axisCount] : axisCount;
+    }
+
+    /// The polyline of a series: a point per sample, then the last value held up to the right edge.
+    AVector<glm::vec2> curveOf(const Geometry& g, const Plot::YAxisScale& scale, size_t series, Clock::time_point now) const {
+        AVector<glm::vec2> points;
+        float lastValue = 0.f;
+        bool hasLast = false;
+        for (const auto& sample : mSamples) {
+            if (series >= sample.values.size()) {
+                continue;
+            }
+            lastValue = sample.values[series];
+            hasLast = true;
+            points.push_back({ xOf(g, sample.time, now), yOf(g, scale, lastValue) });
+        }
+        if (hasLast) {
+            points.push_back({ g.right, yOf(g, scale, lastValue) });   // between the polls the curve is held, not cut
+        }
+        return points;
+    }
+
+    static int bandOf(const Geometry& g, float x) {
+        return x < g.left ? -1 : std::min(FADE_BANDS - 1, int((x - g.left) / g.width() * float(FADE_BANDS)));
+    }
+
+    void drawFills(ARenderContext& ctx, const Geometry& g, const AVector<Plot::YAxisScale>& scales,
+                   Clock::time_point now) const {
+        if (mSamples.empty() || g.width() <= 0.f) {
+            return;
+        }
+        for (const auto& fill : fills) {
+            const size_t axisA = axisOfSeries(fill.seriesA, scales.size());
+            const size_t axisB = axisOfSeries(fill.seriesB, scales.size());
+            if (axisA >= scales.size() || axisB >= scales.size()) {
+                continue;
+            }
+            const auto a = curveOf(g, scales[axisA], fill.seriesA, now);
+            const auto b = curveOf(g, scales[axisB], fill.seriesB, now);
+            if (a.size() < 2 || b.size() < 2) {
+                continue;
+            }
+
+            // the renderer has no polygons: the area is a column of one pixel width per pixel of the plot
+            const auto yAt = [](const AVector<glm::vec2>& curve, size_t& cursor, float x) -> std::optional<float> {
+                if (x < curve.front().x || x > curve.back().x) {
+                    return std::nullopt;
+                }
+                while (cursor + 2 < curve.size() && curve[cursor + 1].x < x) {
+                    ++cursor;
+                }
+                const auto& p = curve[cursor];
+                const auto& q = curve[cursor + 1];
+                const float t = q.x > p.x ? std::clamp((x - p.x) / (q.x - p.x), 0.f, 1.f) : 1.f;
+                return p.y + (q.y - p.y) * t;
+            };
+            std::array<AVector<std::pair<glm::vec2, glm::vec2>>, FADE_BANDS> columns;
+            size_t cursorA = 0;
+            size_t cursorB = 0;
+            for (float x = std::floor(g.left) + 0.5f; x < g.right; x += 1.f) {
+                const auto ya = yAt(a, cursorA, x);
+                const auto yb = yAt(b, cursorB, x);
+                if (ya && yb) {
+                    columns[size_t(bandOf(g, x))].push_back({ { x, *ya }, { x, *yb } });
+                }
+            }
+            for (int band = 0; band < FADE_BANDS; ++band) {
+                if (columns[size_t(band)].empty()) {
+                    continue;
+                }
+                const float bandCenterX = g.left + (float(band) + 0.5f) / float(FADE_BANDS) * g.width();
+                AColor color = fill.color;
+                color.a *= fadeAt(g, bandCenterX);
+                ctx.render.lines(ASolidBrush { color }, columns[size_t(band)], ABorderStyle::Solid {}, AMetric(1.f, AMetric::T_PX));
+            }
+        }
+    }
+
     void drawSeries(ARenderContext& ctx, const Geometry& g, const AVector<Plot::YAxisScale>& scales,
                     Clock::time_point now) const {
         if (mSamples.empty() || g.width() <= 0.f) {
             return;
         }
         const AMetric width(LINE_WIDTH_DP, AMetric::T_DP);
-        for (size_t axis = 0; axis < scales.size(); ++axis) {
+        // the extra series go first, so they are below the series of the axes
+        for (size_t order = 0; order < scales.size() + extraSeriesAxes.size(); ++order) {
+            const bool isExtra = order < extraSeriesAxes.size();
+            const size_t series = isExtra ? scales.size() + order : order - extraSeriesAxes.size();
+            const size_t axis = axisOfSeries(series, scales.size());
+            if (axis >= scales.size()) {
+                continue;
+            }
             // the curve is a single polyline, but a brush has one color: it is drawn in strips of equal transparency
             AVector<glm::vec2> run;
             int runBand = -1;
@@ -229,14 +323,11 @@ private:
                 ctx.render.lines(ASolidBrush { withAlpha(scales[axis].color, fadeAt(g, bandCenterX)) }, run,
                                  ABorderStyle::Solid {}, width);
             };
-            const auto bandOf = [&](float x) {
-                return x < g.left ? -1 : std::min(FADE_BANDS - 1, int((x - g.left) / g.width() * float(FADE_BANDS)));
-            };
 
             std::optional<glm::vec2> previous;
-            const auto add = [&](glm::vec2 p) {
+            for (const auto& p : curveOf(g, scales[axis], series, now)) {
                 if (previous) {
-                    const int band = bandOf((previous->x + p.x) / 2.f);
+                    const int band = bandOf(g, (previous->x + p.x) / 2.f);
                     if (band != runBand) {
                         flush();
                         run.clear();
@@ -246,19 +337,6 @@ private:
                     run.push_back(p);
                 }
                 previous = p;
-            };
-            float lastValue = 0.f;
-            bool hasLast = false;
-            for (const auto& sample : mSamples) {
-                if (axis >= sample.values.size()) {
-                    continue;
-                }
-                lastValue = sample.values[axis];
-                hasLast = true;
-                add({ xOf(g, sample.time, now), yOf(g, scales[axis], lastValue) });
-            }
-            if (hasLast) {
-                add({ g.right, yOf(g, scales[axis], lastValue) });   // between the polls the curve is held, not cut
             }
             flush();
         }
@@ -326,6 +404,8 @@ _<AView> declarative::Plot::operator()() {
     auto view = _new<PlotView>();
     view->readMeasurements = std::move(readMeasurements);
     view->yDivisions = std::max(1, yDivisions);
+    view->extraSeriesAxes = std::move(extraSeriesAxes);
+    view->fills = std::move(fills);
     yAxisScales.bindTo(view->yAxisScales.assignment());
     xAxisDistance.bindTo(view->xAxisDistance.assignment());
     markers.bindTo(view->markers.assignment());

@@ -65,7 +65,7 @@ constexpr float FREQUENCY_MAX_GHZ = 6.f;
 constexpr float GAUGE_TEMPERATURE_MIN_CELSIUS = 30.f;   // gauge only
 constexpr float COOLANT_MIN_CELSIUS = GAUGE_TEMPERATURE_MIN_CELSIUS;   // gauge only
 constexpr float COOLANT_MAX_CELSIUS = 50.f;   // gauge only
-constexpr float VRM_MAX_CELSIUS = 120.f;   // gauge only
+constexpr float VRM_MAX_CELSIUS = 110.f;   // gauge only
 constexpr float PUMP_MAX_RPM = 5000.f;   // gauge only: AIO pumps run at 2-3k, custom loop ones up to 5k
 // shared by the CPU and coolant plot axes: same unit, so the same scale
 constexpr float TEMPERATURE_MIN_CELSIUS = 10.f;
@@ -234,7 +234,8 @@ struct State : AObject {
     AProperty<float> vrm = 0.f;   // °C
     AProperty<float> pump = 0.f;   // RPM
     AProperty<float> power = 0.f;   // watts
-    AProperty<float> frequency = 0.f;
+    AProperty<float> frequencyMax = 0.f;   // the fastest core
+    AProperty<float> frequencyMin = 0.f;   // the slowest online core
     AProperty<float> usage = 0.f;   // percent, all cores
     AProperty<AVector<declarative::Plot::Marker>> peaks;
     _<ATimer> timer = _new<ATimer>(100ms);
@@ -284,7 +285,18 @@ struct State : AObject {
         vrm = vrmTemperatureCelsius().valueOr(0.f);
         pump = pumpRpm().valueOr(0.f);
         power = cpuPowerWatts().valueOr(0.f);
-        frequency = cpuFrequencyGHz().valueOr(0.f);
+        const auto frequencies = cpuFrequenciesGHz();
+        float fastest = 0.f;
+        float slowest = 0.f;
+        for (const float f : frequencies) {
+            if (f <= 0.f) {
+                continue;   // offline
+            }
+            fastest = std::max(fastest, f);
+            slowest = slowest == 0.f ? f : std::min(slowest, f);
+        }
+        frequencyMax = fastest;
+        frequencyMin = slowest;
         usage = cpuUsageFraction().valueOr(0.f) * 100.f;
     }
 
@@ -629,7 +641,7 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
     AVector<_<AView>> meters;
     if (cpuFrequencyGHz()) {
         meters << Gauge {
-            .value = AUI_REACT(*state->frequency),
+            .value = AUI_REACT(*state->frequencyMax),
             .min = 0.f,
             .max = FREQUENCY_MAX_GHZ,
             .yellowFrom = FREQUENCY_MAX_GHZ - 3,
@@ -779,8 +791,10 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
           sources << &source;
       };
 
+      AOptional<size_t> frequencyAxis;   // the slowest core is drawn on the axis of the fastest one
       if (cpuFrequencyGHz()) {
-          addSeries(state->frequency, { 0x2f7fd9_rgb, "GHz", 0.f, FREQUENCY_MAX_GHZ }, true, [](float v) { return "{:.2f} GHz"_format(v); });
+          frequencyAxis = scales.size();
+          addSeries(state->frequencyMax, { 0x2f7fd9_rgb, "GHz", 0.f, FREQUENCY_MAX_GHZ }, true, [](float v) { return "{:.2f} GHz"_format(v); });
       }
       const bool hasCoolant = coolantTemperatureCelsius().hasValue();
       if (cpuTemperatureCelsius()) {
@@ -814,10 +828,20 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
                     [](float v) { return "{:.2f} TFLOPS"_format(v); });
       }
 
+        AVector<size_t> extraSeriesAxes;
+        AVector<declarative::Plot::Fill> fills;
+        if (frequencyAxis) {
+            fills << declarative::Plot::Fill { *frequencyAxis, sources.size(), AColor(0x6fb1ff_rgb).transparentize(0.4f) };
+            extraSeriesAxes << *frequencyAxis;
+            sources << &state->frequencyMin;
+        }
+
         return declarative::Plot {
             .pollInterval = 100ms,
             .yAxisScales = std::move(scales),
             .xAxisDistance = PLOT_SPAN,
+            .extraSeriesAxes = std::move(extraSeriesAxes),
+            .fills = std::move(fills),
             .readMeasurements =
                 [state, sources = std::move(sources), trackers]() {
                     const auto now = declarative::Plot::Clock::now();

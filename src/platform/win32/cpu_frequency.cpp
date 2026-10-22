@@ -30,35 +30,41 @@ std::vector<ProcessorPowerInformation> processorPowerInformation() {
 
 }   // namespace
 
-AOptional<float> cpuFrequencyGHz() {
+std::vector<float> cpuFrequenciesGHz() {
     const auto info = processorPowerInformation();
     if (info.empty()) {
-        return std::nullopt;
+        return {};
     }
 
     // Task Manager's way: nominal frequency * "% Processor Performance" (goes above 100% when boosting).
+    // The instances are "group,index" in the order of the processors, plus the totals.
     static PdhCounterArray performance(L"\\Processor Information(*)\\% Processor Performance");
-    double fastestPerformance = 0.0;
+    std::vector<float> result;
     for (const auto& v : performance.values()) {
-        if (v.instance.find(L"_Total") == std::wstring::npos) {
-            fastestPerformance = std::max(fastestPerformance, v.value);
+        if (v.instance.find(L"_Total") != std::wstring::npos) {
+            continue;
         }
+        const size_t i = result.size();
+        const ULONG maxMhz = i < info.size() ? info[i].maxMhz : info[0].maxMhz;
+        result.push_back(float(double(maxMhz) * v.value / 100.0 / 1000.0));
     }
-    if (fastestPerformance > 0.0) {
-        ULONG maxMhz = 0;
-        for (const auto& p : info) {
-            maxMhz = std::max(maxMhz, p.maxMhz);
-        }
-        return float(double(maxMhz) * fastestPerformance / 100.0 / 1000.0);
+    if (std::any_of(result.begin(), result.end(), [](float f) { return f > 0.f; })) {
+        return result;
     }
 
     // the counter needs two samples (first call) or is missing: whatever the power manager reports
-    ULONG currentMhz = 0;
+    result.clear();
     for (const auto& p : info) {
-        currentMhz = std::max(currentMhz, p.currentMhz);
+        result.push_back(float(p.currentMhz) / 1000.f);
     }
-    if (currentMhz == 0) {
+    return result;
+}
+
+AOptional<float> cpuFrequencyGHz() {
+    const auto frequencies = cpuFrequenciesGHz();
+    const auto fastest = std::max_element(frequencies.begin(), frequencies.end());
+    if (fastest == frequencies.end() || *fastest <= 0.f) {
         return std::nullopt;
     }
-    return float(currentMhz) / 1000.f;
+    return *fastest;
 }
