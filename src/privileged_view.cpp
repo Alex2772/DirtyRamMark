@@ -21,7 +21,7 @@ _<AView> upgradePrompt(const std::weak_ptr<AViewContainer>& weakHolder, const Fa
         Vertical {
           AText::fromString(reason),
           Button {
-            .content = Label { "Upgrade privileges to obtain more info" },
+            .content = Label { privileges::upgradeButtonText() },
             .onClick =
                 [weakHolder, factory] {
                     auto holder = weakHolder.lock();
@@ -57,6 +57,25 @@ void fill(const _<AViewContainer>& holder, const Factory& factory) {
 }
 
 }   // namespace
+
+_<AView> ui::upgradeButton() {
+#if AUI_PLATFORM_WIN
+    if (!privileges::isGranted()) {
+        return Button {
+            .content = Label { privileges::upgradeButtonText() },
+            .onClick =
+                [] {
+                    try {
+                        privileges::upgrade();   // doesn't return on success: an elevated instance takes over
+                    } catch (const AException& e) {
+                        ALogger::err("privileges") << "Failed: " << e;
+                    }
+                },
+        };
+    }
+#endif
+    return _new<AView>();
+}
 
 _<AView> ui::privilegedView(std::function<_<AView>(const UpgradePrompt&)> factory) {
     auto holder = _new<AViewContainer>();

@@ -1,1 +1,3 @@
 tests/data/* text eol=lf
+# Driver package files are covered by the signed catalog: any byte change (incl. EOL conversion) breaks it.
+assets-windows/** -text

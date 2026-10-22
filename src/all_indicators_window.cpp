@@ -12,6 +12,7 @@
 
 #include "all_indicators_window.h"
 #include "device_tree.h"
+#include "privileged_view.h"
 
 using namespace ass;
 using namespace declarative;
@@ -100,6 +101,8 @@ void ui::openAllIndicatorsWindow(AWindow& parent) {
     });
     auto state = _new<State>();
     window->setContents(Vertical {
+      // Windows: the CPU sensors work for administrators only (empty when elevated or not Windows)
+      Centered { ui::upgradeButton() },
       Horizontal {
         Label { "Indicator" } AUI_OVERRIDE_STYLE { FixedSize { AMetric(NAME_COLUMN_DP, AMetric::T_DP), {} } },
         Label { "Value" } AUI_OVERRIDE_STYLE { FixedSize { AMetric(VALUE_COLUMN_DP, AMetric::T_DP), {} } },

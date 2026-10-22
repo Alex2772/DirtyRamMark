@@ -8,8 +8,9 @@
 /**
  * @brief Actual (currently programmed) DRAM timings, read from the memory controller.
  * @details
- * Unlike SPD, this is what the BIOS really configured. Requires root (pkexec). Supported: AMD Zen 2..5 (UMC registers
- * over SMN). Returns an empty object if unsupported or access is denied.
+ * Unlike SPD, this is what the BIOS really configured. Requires root (pkexec) on Linux and the PawnIO driver on Windows
+ * (see platform/win32/pawnio.h). Supported: AMD Zen 2..5 (UMC registers over SMN), Intel Skylake..Raptor Lake (MCHBAR).
+ * Returns an empty object if unsupported or access is denied.
  */
 AJson::Object memoryTimings();
 

@@ -14,6 +14,7 @@
 #include <AUI/ASS/Property/Padding.h>
 #include <AUI/ASS/Property/TextColor.h>
 #include <AUI/Common/ATimer.h>
+#include <AUI/Logging/ALogger.h>
 #include <AUI/Thread/AThread.h>
 #include <AUI/Platform/AWindow.h>
 #include <AUI/Render/ABrush.h>
@@ -36,6 +37,7 @@
 #include "all_indicators_window.h"
 #include "gauge.h"
 #include "plot.h"
+#include "privileged_view.h"
 #include "cpu_frequency.h"
 #include "cpu_stresstest.h"
 #include "cpu_stresstest_window.h"
@@ -888,6 +890,8 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
                                           TextColor { AColor::GRAY },
                                         } })
                                       : _new<AView>();   // nothing to say about an unknown CPU
+    // Windows: the hardware sensors work for administrators only (empty when elevated or not Windows)
+    _<AView> elevateButton = ui::upgradeButton();
     const unsigned coreCount = ui::CpuStressTest::maxThreads();   // the checkboxes go from the highest core to CPU 0
 
     window->setContents(Vertical {
@@ -905,10 +909,13 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
           },
           std::move(tunedNote),
           Centered {
-            Button {
-              .content = Label { "All Indicators..." },
-              .onClick = [parent = window.get()] { ui::openAllIndicatorsWindow(*parent); },   // not the shared_ptr: it would own itself
-            },
+            Horizontal {
+              Button {
+                .content = Label { "All Indicators..." },
+                .onClick = [parent = window.get()] { ui::openAllIndicatorsWindow(*parent); },   // not the shared_ptr: it would own itself
+              },
+              std::move(elevateButton),
+            } AUI_OVERRIDE_STYLE { LayoutSpacing { 8_dp } },
           },
           plotHolder,
         } AUI_OVERRIDE_STYLE { Expanding { 1, 1 }, LayoutSpacing { 8_dp } },

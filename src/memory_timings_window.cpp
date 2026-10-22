@@ -1,5 +1,6 @@
 #include <AUI/ASS/Property/Expanding.h>
 #include <AUI/ASS/Property/MinSize.h>
+#include <AUI/Logging/ALogger.h>
 #include <AUI/Platform/AWindow.h>
 #include <AUI/Util/UIBuildingHelpers.h>
 #include <AUI/Util/kAUI.h>
@@ -36,6 +37,7 @@ _<AView> timingsContents(const ui::UpgradePrompt& prompt) {
     } catch (const privileges::Required& e) {
         footer = prompt(e.getMessage());
     } catch (const AException& e) {
+        ALogger::err("MemoryTimings") << "Unable to read memory timings: " << e;
         footer = Centered { AText::fromString(e.getMessage()) };
     }
     auto grid = scrollable(generic_key_value_cloud::makeGrid(entries));

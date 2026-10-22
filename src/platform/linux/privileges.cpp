@@ -9,5 +9,7 @@ std::atomic_bool granted = false;
 
 bool privileges::isGranted() { return granted || geteuid() == 0; }
 
+AString privileges::upgradeButtonText() { return "Upgrade privileges to obtain more info"; }
+
 // pkexec authorizes every privileged invocation on its own, so there is nothing to do in advance.
 void privileges::upgrade() { granted = true; }

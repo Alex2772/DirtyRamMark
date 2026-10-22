@@ -4,7 +4,9 @@
 #include <intrin.h>
 
 #include <AUI/Common/AException.h>
+#include <AUI/Logging/ALogger.h>
 #include <memory_timings.h>
+#include <privileges.h>
 
 using namespace memory_timings;
 
@@ -32,6 +34,37 @@ CpuId memory_timings::readCpuId() {
 }
 
 AJson::Object memoryTimings() {
-    // The memory controller registers are reachable only from ring 0 on Windows, which needs a signed kernel driver.
-    throw AException("Reading the actual DRAM timings is not supported on Windows");
+    // The memory controller registers are reachable only from ring 0 on Windows: see pawnio.h. Its driver can be
+    // installed and opened by administrators only.
+    if (!privileges::isGranted()) {
+        ALogger::warn("MemoryTimings") << "PawnIO driver not loaded: the process is not running as administrator";
+        throw privileges::Required("The memory controller registers can be read by administrator only: the PawnIO "
+                                   "driver can't be loaded without administrator rights");
+    }
+    auto cpu = readCpuId();
+    auto timings = [&] {
+        if (cpu.vendor == "AuthenticAMD") {
+            auto result = readAmdTimings(cpu);
+            ALogger::info("MemoryTimings") << "AMD family " << cpu.family << " model " << cpu.model << ": "
+                                           << AJson::toString(result);
+            return result;
+        }
+        if (cpu.vendor == "GenuineIntel") {
+            auto layout = intelLayoutOf(cpu.family, cpu.model);
+            if (!layout) {
+                throw AException("Unsupported Intel CPU: family {}, model {}"_format(cpu.family, cpu.model));
+            }
+            auto result = readIntelTimings(*layout);
+            ALogger::info("MemoryTimings") << "Intel family " << cpu.family << " model " << cpu.model << ": "
+                                           << AJson::toString(result);
+            return result;
+        }
+        throw AException("Unsupported CPU family \"{}\""_format(cpu.vendor));
+    }();
+
+    AJson::Object result;
+    for (auto& [channel, t] : timings) {
+        result["Timings - {}"_format(channel)] = std::move(t);
+    }
+    return result;
 }

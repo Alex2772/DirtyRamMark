@@ -76,6 +76,14 @@ endif ()
 # Compile assets
 aui_compile_assets(${PROJECT_NAME})
 
+# Windows-only assets: the PawnIO driver package (signed .sys/.inf/.cat), PawnIOLib.dll and its modules, which are
+# written to disk and installed at run time (see src/platform/win32/pawnio.cpp). Asset paths are relative to the folder:
+# ":pawnio/PawnIO.sys".
+if (WIN32)
+    aui_compile_assets(${PROJECT_NAME} DIR assets-windows)
+    target_link_libraries(${PROJECT_NAME} PRIVATE setupapi newdev)
+endif ()
+
 # Enable tests
 aui_enable_tests(${PROJECT_NAME})
 

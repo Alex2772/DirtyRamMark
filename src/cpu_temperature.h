@@ -6,7 +6,9 @@
  * @brief Current CPU temperature (package / die control temperature), degrees Celsius.
  * @return std::nullopt if the platform can't tell. Implemented per platform (src/platform/<os>/cpu_temperature.cpp).
  * @details
- * Doesn't need elevated privileges. Cheap enough to be polled a few times per second.
+ * Cheap enough to be polled a few times per second. Doesn't need elevated privileges, except on Windows: the real die
+ * sensor is read through the PawnIO driver, which needs an administrator; otherwise the hottest ACPI thermal zone is
+ * used, which many PCs don't have.
  */
 AOptional<float> cpuTemperatureCelsius();
 

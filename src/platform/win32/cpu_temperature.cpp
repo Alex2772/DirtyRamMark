@@ -4,6 +4,7 @@
 #include <comdef.h>
 #include <wbemidl.h>
 #include <cpu_temperature.h>
+#include "die_sensor.h"
 #include "pdh_counter.h"
 
 namespace {
@@ -77,7 +78,10 @@ AOptional<float> wmiThermalZoneCelsius() {
 }   // namespace
 
 AOptional<float> cpuTemperatureCelsius() {
-    // No driver, so no real per-core / package sensors: the hottest ACPI thermal zone is the closest thing.
+    if (auto celsius = DieSensor::instance().temperatureCelsius()) {
+        return celsius;
+    }
+    // Without the driver (not an administrator) the closest thing is the hottest ACPI thermal zone, if the PC has any.
     static PdhCounterArray zones(L"\\Thermal Zone Information(*)\\High Precision Temperature");   // tenths of Kelvin
     AOptional<float> hottest;
     for (const auto& v : zones.values()) {
