@@ -69,17 +69,23 @@ struct Plot {
     /// They are drawn below the series of the axes.
     AVector<size_t> extraSeriesAxes = {};
 
-    /// The area between two series (indices of the values returned by `readMeasurements`), drawn below all the curves.
-    /// The alpha of `color` is the opacity of the fill.
-    struct Fill {
-        size_t seriesA;
-        size_t seriesB;
+    /// A distribution of a group of values (e.g. the frequencies of all the cores) drawn below all the curves: every
+    /// value of the group gets a translucent band from the mean of the group to the value, so the bands pile up where
+    /// the values are dense. The group is `count` consecutive values returned by `readMeasurements` starting with the
+    /// index `firstSeries`; they are not drawn as curves, so they can be placed after the values of the axes and of
+    /// `extraSeriesAxes`. A NaN value is skipped (and doesn't take part in the mean).
+    struct Heatmap {
+        size_t firstSeries;
+        size_t count;
+        size_t axis;     // index in yAxisScales: the scale of all the values of the group
+        /// The alpha is the opacity where all the values of the group overlap (that is next to the mean); the opacity
+        /// of a single band is derived from it and `count`.
         AColor color;
     };
-    AVector<Fill> fills = {};
+    AVector<Heatmap> heatmaps = {};
 
-    /// Returns one value per element of `yAxisScales`, then one per element of `extraSeriesAxes` (a missing value is
-    /// skipped). Called on the UI thread.
+    /// Returns one value per element of `yAxisScales`, then one per element of `extraSeriesAxes`, then whatever the
+    /// heatmaps use (a missing value is skipped). Called on the UI thread.
     std::function<AVector<float>()> readMeasurements;
 
     contract::In<AVector<Marker>> markers = AVector<Marker> {};

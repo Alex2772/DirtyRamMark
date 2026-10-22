@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <deque>
 #include <optional>
+#include <vector>
 #include <AUI/ASS/Property/Expanding.h>
 #include <AUI/ASS/Property/MinSize.h>
 #include <AUI/Common/ATimer.h>
@@ -60,7 +61,7 @@ public:
     AProperty<AVector<Plot::Marker>> markers;
     std::function<AVector<float>()> readMeasurements;
     AVector<size_t> extraSeriesAxes;
-    AVector<Plot::Fill> fills;
+    AVector<Plot::Heatmap> heatmaps;
     int yDivisions = 10;
 
     PlotView() {
@@ -77,7 +78,7 @@ public:
         const auto geometry = computeGeometry(scales);
 
         drawGrid(ctx, geometry, now);
-        drawFills(ctx, geometry, scales, now);
+        drawHeatmaps(ctx, geometry, scales, now);
         drawSeries(ctx, geometry, scales, now);
         drawAxes(ctx, geometry, scales);
         drawMarkers(ctx, geometry, scales, now);
@@ -246,44 +247,86 @@ private:
         return x < g.left ? -1 : std::min(FADE_BANDS - 1, int((x - g.left) / g.width() * float(FADE_BANDS)));
     }
 
-    void drawFills(ARenderContext& ctx, const Geometry& g, const AVector<Plot::YAxisScale>& scales,
-                   Clock::time_point now) const {
+    void drawHeatmaps(ARenderContext& ctx, const Geometry& g, const AVector<Plot::YAxisScale>& scales,
+                      Clock::time_point now) const {
         if (mSamples.empty() || g.width() <= 0.f) {
             return;
         }
-        for (const auto& fill : fills) {
-            const size_t axisA = axisOfSeries(fill.seriesA, scales.size());
-            const size_t axisB = axisOfSeries(fill.seriesB, scales.size());
-            if (axisA >= scales.size() || axisB >= scales.size()) {
+        for (const auto& heatmap : heatmaps) {
+            if (heatmap.axis >= scales.size() || heatmap.count == 0) {
                 continue;
             }
-            const auto a = curveOf(g, scales[axisA], fill.seriesA, now);
-            const auto b = curveOf(g, scales[axisB], fill.seriesB, now);
-            if (a.size() < 2 || b.size() < 2) {
+            const auto& scale = scales[heatmap.axis];
+
+            // a node per sample (then the last one held up to the right edge): x, the mean, the values; all in pixels
+            const size_t stride = heatmap.count + 2;
+            std::vector<float> nodes;
+            const auto addNode = [&](float x, const Sample& sample) {
+                const size_t base = nodes.size();
+                nodes.resize(base + stride);
+                nodes[base] = x;
+                float sum = 0.f;
+                size_t n = 0;
+                for (size_t i = 0; i < heatmap.count; ++i) {
+                    const float value = sample.values[heatmap.firstSeries + i];
+                    nodes[base + 2 + i] = std::isfinite(value) ? yOf(g, scale, value) : NAN;
+                    if (std::isfinite(value)) {
+                        sum += value;
+                        ++n;
+                    }
+                }
+                if (n == 0) {
+                    nodes.resize(base);
+                    return;
+                }
+                nodes[base + 1] = yOf(g, scale, sum / float(n));
+            };
+            const Sample* last = nullptr;
+            for (const auto& sample : mSamples) {
+                if (sample.values.size() < heatmap.firstSeries + heatmap.count) {
+                    continue;
+                }
+                addNode(xOf(g, sample.time, now), sample);
+                last = &sample;
+            }
+            if (last) {
+                addNode(g.right, *last);
+            }
+            const size_t nodeCount = nodes.size() / stride;
+            if (nodeCount < 2) {
                 continue;
             }
 
-            // the renderer has no polygons: the area is a column of one pixel width per pixel of the plot
-            const auto yAt = [](const AVector<glm::vec2>& curve, size_t& cursor, float x) -> std::optional<float> {
-                if (x < curve.front().x || x > curve.back().x) {
-                    return std::nullopt;
+            // where all the bands overlap the total opacity is `color.a`: 1 - (1 - a)^count = color.a
+            const float bandAlpha = 1.f - std::pow(1.f - std::clamp(heatmap.color.a, 0.f, 0.999f), 1.f / float(heatmap.count));
+
+            // the renderer has no polygons: a band is a column of one pixel width per pixel of the plot; the columns
+            // of all the values with the same transparency (they differ by x only) go to one batch
+            std::array<AVector<std::pair<glm::vec2, glm::vec2>>, FADE_BANDS> columns;
+            size_t cursor = 0;
+            for (float x = std::floor(g.left) + 0.5f; x < g.right; x += 1.f) {
+                if (x < nodes[0] || x > nodes[(nodeCount - 1) * stride]) {
+                    continue;
                 }
-                while (cursor + 2 < curve.size() && curve[cursor + 1].x < x) {
+                while (cursor + 2 < nodeCount && nodes[(cursor + 1) * stride] < x) {
                     ++cursor;
                 }
-                const auto& p = curve[cursor];
-                const auto& q = curve[cursor + 1];
-                const float t = q.x > p.x ? std::clamp((x - p.x) / (q.x - p.x), 0.f, 1.f) : 1.f;
-                return p.y + (q.y - p.y) * t;
-            };
-            std::array<AVector<std::pair<glm::vec2, glm::vec2>>, FADE_BANDS> columns;
-            size_t cursorA = 0;
-            size_t cursorB = 0;
-            for (float x = std::floor(g.left) + 0.5f; x < g.right; x += 1.f) {
-                const auto ya = yAt(a, cursorA, x);
-                const auto yb = yAt(b, cursorB, x);
-                if (ya && yb) {
-                    columns[size_t(bandOf(g, x))].push_back({ { x, *ya }, { x, *yb } });
+                const float* p = &nodes[cursor * stride];
+                const float* q = p + stride;
+                const float t = q[0] > p[0] ? std::clamp((x - p[0]) / (q[0] - p[0]), 0.f, 1.f) : 1.f;
+                const float center = p[1] + (q[1] - p[1]) * t;
+                auto& batch = columns[size_t(bandOf(g, x))];
+                for (size_t i = 0; i < heatmap.count; ++i) {
+                    const float a = p[2 + i];
+                    const float b = q[2 + i];
+                    if (std::isnan(a) || std::isnan(b)) {
+                        continue;
+                    }
+                    float end = a + (b - a) * t;
+                    if (std::abs(end - center) < 1.f) {
+                        end = center + (end < center ? -1.f : 1.f);   // a core at the mean is still visible
+                    }
+                    batch.push_back({ { x, center }, { x, end } });
                 }
             }
             for (int band = 0; band < FADE_BANDS; ++band) {
@@ -291,8 +334,8 @@ private:
                     continue;
                 }
                 const float bandCenterX = g.left + (float(band) + 0.5f) / float(FADE_BANDS) * g.width();
-                AColor color = fill.color;
-                color.a *= fadeAt(g, bandCenterX);
+                AColor color = heatmap.color;
+                color.a = bandAlpha * fadeAt(g, bandCenterX);
                 ctx.render.lines(ASolidBrush { color }, columns[size_t(band)], ABorderStyle::Solid {}, AMetric(1.f, AMetric::T_PX));
             }
         }
@@ -405,7 +448,7 @@ _<AView> declarative::Plot::operator()() {
     view->readMeasurements = std::move(readMeasurements);
     view->yDivisions = std::max(1, yDivisions);
     view->extraSeriesAxes = std::move(extraSeriesAxes);
-    view->fills = std::move(fills);
+    view->heatmaps = std::move(heatmaps);
     yAxisScales.bindTo(view->yAxisScales.assignment());
     xAxisDistance.bindTo(view->xAxisDistance.assignment());
     markers.bindTo(view->markers.assignment());

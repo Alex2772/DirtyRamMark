@@ -2,6 +2,7 @@
 #include <optional>
 #include <cmath>
 #include <deque>
+#include <vector>
 #include <AUI/ASS/Property/Expanding.h>
 #include <AUI/ASS/Property/BackgroundImage.h>
 #include <AUI/ASS/Property/BackgroundSolid.h>
@@ -74,7 +75,7 @@ constexpr float FIRE_FROM_CELSIUS = 85.f;   // the gauge starts to burn...
 constexpr float FIRE_FULL_CELSIUS = 95.f;   // ...and burns the hardest here
 constexpr float POWER_DEFAULT_MAX_WATTS = 200.f;   // for a CPU that is not in maxPowerWatts()
 constexpr float THROTTLE_DEFAULT_CELSIUS = 95.f;   // for a CPU that is not in throttleCelsius()
-constexpr std::chrono::seconds PLOT_SPAN = 3min;
+constexpr std::chrono::seconds PLOT_SPAN = 1min;
 
 /// Reference points for the TFLOPS gauge: theoretical peak of fp32 FMA (AVX2/NEON), all cores at a typical sustained
 /// clock: cores x GHz x FLOP per cycle per core (32 for 2x256-bit FMA or an Apple P-core with 4x128-bit NEON FMA, 16
@@ -236,6 +237,7 @@ struct State : AObject {
     AProperty<float> power = 0.f;   // watts
     AProperty<float> frequencyMax = 0.f;   // the fastest core
     AProperty<float> frequencyMin = 0.f;   // the slowest online core
+    std::vector<float> frequencies;   // every core, GHz; NaN for an offline one
     AProperty<float> usage = 0.f;   // percent, all cores
     AProperty<AVector<declarative::Plot::Marker>> peaks;
     _<ATimer> timer = _new<ATimer>(100ms);
@@ -285,12 +287,13 @@ struct State : AObject {
         vrm = vrmTemperatureCelsius().valueOr(0.f);
         pump = pumpRpm().valueOr(0.f);
         power = cpuPowerWatts().valueOr(0.f);
-        const auto frequencies = cpuFrequenciesGHz();
+        frequencies = cpuFrequenciesGHz();
         float fastest = 0.f;
         float slowest = 0.f;
-        for (const float f : frequencies) {
+        for (float& f : frequencies) {
             if (f <= 0.f) {
-                continue;   // offline
+                f = NAN;   // offline
+                continue;
             }
             fastest = std::max(fastest, f);
             slowest = slowest == 0.f ? f : std::min(slowest, f);
@@ -829,11 +832,13 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
       }
 
         AVector<size_t> extraSeriesAxes;
-        AVector<declarative::Plot::Fill> fills;
+        AVector<declarative::Plot::Heatmap> heatmaps;
+        size_t frequenciesCount = 0;   // the per-core values go after `sources`
         if (frequencyAxis) {
-            fills << declarative::Plot::Fill { *frequencyAxis, sources.size(), AColor(0x6fb1ff_rgb).transparentize(0.4f) };
             extraSeriesAxes << *frequencyAxis;
             sources << &state->frequencyMin;
+            frequenciesCount = state->frequencies.size();
+            heatmaps << declarative::Plot::Heatmap { sources.size(), frequenciesCount, *frequencyAxis, AColor(0x2f7fd9_rgb) };
         }
 
         return declarative::Plot {
@@ -841,9 +846,9 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
             .yAxisScales = std::move(scales),
             .xAxisDistance = PLOT_SPAN,
             .extraSeriesAxes = std::move(extraSeriesAxes),
-            .fills = std::move(fills),
+            .heatmaps = std::move(heatmaps),
             .readMeasurements =
-                [state, sources = std::move(sources), trackers]() {
+                [state, sources = std::move(sources), trackers, frequenciesCount]() {
                     const auto now = declarative::Plot::Clock::now();
                     AVector<float> values;
                     for (const auto* source : sources) {
@@ -852,6 +857,9 @@ void ui::openCpuStressTestWindow(AWindow& parent) {
                     bool peaksChanged = false;
                     for (const auto& tracker : trackers) {
                         peaksChanged |= tracker->add(now, values[tracker->axis]);
+                    }
+                    for (size_t i = 0; i < frequenciesCount; ++i) {
+                        values << (i < state->frequencies.size() ? state->frequencies[i] : float(NAN));
                     }
                     if (peaksChanged) {
                         AVector<declarative::Plot::Marker> markers;
